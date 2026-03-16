@@ -1,0 +1,1 @@
+This is the frontend directory for all frontend stuff (Figma, JS, ...)
