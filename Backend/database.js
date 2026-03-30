@@ -23,6 +23,15 @@ createTrainingBtn.addEventListener("click", createTraining);
 function createDeleteButton(label, onClick) {
   const btn = document.createElement("button");
   btn.textContent = label;
+  btn.style.marginRight = "8px";
+  btn.addEventListener("click", onClick);
+  return btn;
+}
+
+function createActionButton(label, onClick) {
+  const btn = document.createElement("button");
+  btn.textContent = label;
+  btn.style.marginRight = "8px";
   btn.addEventListener("click", onClick);
   return btn;
 }
@@ -45,6 +54,28 @@ function createCard(title, lines = []) {
   }
 
   return wrapper;
+}
+
+// -------- BILD-HILFSFUNKTIONEN (BASE64 IN FIRESTORE) --------
+function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(reader.error);
+
+    reader.readAsDataURL(file);
+  });
+}
+
+async function uploadExerciseImage(exerciseId, file) {
+  const dataUrl = await fileToDataUrl(file);
+
+  await updateDoc(doc(db, "exercises", exerciseId), {
+    img: dataUrl
+  });
+
+  return dataUrl;
 }
 
 async function loadUsers() {
@@ -119,8 +150,76 @@ async function loadExercises() {
       `Beschreibung: ${data.description || "-"}`,
       `Coaching Points: ${coachingPoints}`,
       `Dauer: ${data.duration ?? "-"} min`,
-      `Bild: ${data.img || "-"}`
+      `Bild: ${data.img ? "vorhanden" : "-"}`
     ]);
+
+    const previewImage = document.createElement("img");
+    previewImage.alt = data.name || "Exercise Bild";
+    previewImage.style.maxWidth = "220px";
+    previewImage.style.maxHeight = "160px";
+    previewImage.style.display = "none";
+    previewImage.style.marginBottom = "10px";
+    previewImage.style.borderRadius = "6px";
+    previewImage.style.objectFit = "cover";
+    previewImage.style.border = "1px solid #ccc";
+
+    if (data.img && typeof data.img === "string" && data.img !== "wird_noch_befüllt") {
+      previewImage.src = data.img;
+      previewImage.style.display = "block";
+    }
+
+    const fileInput = document.createElement("input");
+    fileInput.type = "file";
+    fileInput.accept = "image/*";
+    fileInput.style.display = "block";
+    fileInput.style.marginBottom = "10px";
+
+    fileInput.addEventListener("change", () => {
+      const file = fileInput.files[0];
+      if (!file) return;
+
+      const localUrl = URL.createObjectURL(file);
+      previewImage.src = localUrl;
+      previewImage.style.display = "block";
+    });
+
+    const statusText = document.createElement("p");
+    statusText.style.fontSize = "14px";
+    statusText.style.margin = "6px 0";
+
+    const uploadBtn = createActionButton("Bild hochladen", async () => {
+      const file = fileInput.files[0];
+
+      if (!file) {
+        alert("Bitte zuerst ein Bild auswählen.");
+        return;
+      }
+
+      // Sicherheitslimit für kleine Bilder
+      if (file.size > 80 * 1024) {
+        alert("Bild ist zu groß. Bitte ein Bild unter 80 KB wählen.");
+        return;
+      }
+
+      uploadBtn.disabled = true;
+      statusText.textContent = "Bild wird gespeichert...";
+
+      try {
+        const dataUrl = await uploadExerciseImage(exerciseDoc.id, file);
+
+        previewImage.src = dataUrl;
+        previewImage.style.display = "block";
+        statusText.textContent = "Bild erfolgreich gespeichert.";
+
+        await loadExercises();
+      } catch (error) {
+        console.error("Fehler beim Speichern des Bildes:", error);
+        statusText.textContent = `Fehler: ${error.code || error.message}`;
+        alert(`Bild konnte nicht gespeichert werden: ${error.code || error.message}`);
+      } finally {
+        uploadBtn.disabled = false;
+      }
+    });
 
     const deleteBtn = createDeleteButton("Exercise löschen", async () => {
       const confirmed = confirm(`Exercise ${exerciseDoc.id} wirklich löschen?`);
@@ -133,7 +232,12 @@ async function loadExercises() {
       await loadExercises();
     });
 
+    card.appendChild(previewImage);
+    card.appendChild(fileInput);
+    card.appendChild(statusText);
+    card.appendChild(uploadBtn);
     card.appendChild(deleteBtn);
+
     exercisesList.appendChild(card);
   });
 }
@@ -153,7 +257,7 @@ async function removeExerciseFromAllTrainings(exerciseId) {
   }
 }
 
-// -------- NEU: USER ERSTELLEN --------
+// -------- USER ERSTELLEN --------
 async function createUser() {
   const username = prompt("Benutzername:");
   if (!username) return;
@@ -178,7 +282,7 @@ async function createUser() {
   }
 }
 
-// -------- NEU: TRAINING ERSTELLEN --------
+// -------- TRAINING ERSTELLEN --------
 async function createTraining() {
   const title = prompt("Titel des Trainings:");
   if (!title) return;
