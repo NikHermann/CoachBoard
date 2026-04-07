@@ -33,12 +33,10 @@ export async function changeOwnPassword(currentPassword, newPassword) {
   await updatePassword(user, newPassword);
 }
 
-export async function sendOwnPasswordReset() {
-  const user = auth.currentUser;
-
-  if (!user || !user.email) {
-    throw new Error("Kein Benutzer eingeloggt.");
+export async function sendResetMailToEmail(email) {
+  if (!email) {
+    throw new Error("Keine E-Mail angegeben.");
   }
 
-  await sendPasswordResetEmail(auth, user.email);
+  await sendPasswordResetEmail(auth, email);
 }

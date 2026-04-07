@@ -1,11 +1,12 @@
-import { db } from "./firebase.js";
+import { db, auth } from "./firebase.js";
 import {
   collection,
   getDocs,
   doc,
   deleteDoc,
-  addDoc
+  setDoc
 } from "firebase/firestore";
+import { createUserWithEmailAndPassword } from "firebase/auth";
 import { createCard, createDeleteButton } from "./ui.js";
 
 export async function loadUsers(usersList) {
@@ -17,9 +18,9 @@ export async function loadUsers(usersList) {
 
     const card = createCard(`User: ${data.username || data.name || userDoc.id}`, [
       `ID: ${userDoc.id}`,
+      `E-Mail: ${data.email || "-"}`,
       `Club: ${data.club || "-"}`,
-      `Rolle: ${data.role || "-"}`,
-      `E-Mail: ${data.email || "-"}`
+      `Rolle: ${data.role || "-"}`
     ]);
 
     const deleteBtn = createDeleteButton("User löschen", async () => {
@@ -48,8 +49,28 @@ export async function createUser(reloadUsers) {
   const role = prompt("Rolle (admin / staff / player):");
   if (!role) return;
 
+  const password = prompt("Passwort:");
+  if (!password) return;
+
+  const passwordRepeat = prompt("Passwort wiederholen:");
+  if (!passwordRepeat) return;
+
+  if (password !== passwordRepeat) {
+    alert("Die Passwörter stimmen nicht überein.");
+    return;
+  }
+
+  if (password.length < 6) {
+    alert("Das Passwort muss mindestens 6 Zeichen lang sein.");
+    return;
+  }
+
   try {
-    await addDoc(collection(db, "users"), {
+    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+    const uid = userCredential.user.uid;
+
+    await setDoc(doc(db, "users", uid), {
+      uid,
       username,
       email,
       club,
@@ -57,8 +78,12 @@ export async function createUser(reloadUsers) {
     });
 
     await reloadUsers();
+
+    alert(
+      "User erfolgreich erstellt.\n\nAchtung: Du bist jetzt als der neu erstellte User eingeloggt."
+    );
   } catch (error) {
     console.error("Fehler beim Erstellen des Users:", error);
-    alert("User konnte nicht erstellt werden.");
+    alert(`User konnte nicht erstellt werden: ${error.message}`);
   }
 }

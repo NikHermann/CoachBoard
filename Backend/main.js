@@ -5,7 +5,7 @@ import {
   login,
   logout,
   changeOwnPassword,
-  sendOwnPasswordReset,
+  sendResetMailToEmail,
   observeAuth
 } from "./authService.js";
 
@@ -89,7 +89,8 @@ changePasswordBtn.addEventListener("click", async () => {
 
 resetPasswordBtn.addEventListener("click", async () => {
   try {
-    await sendOwnPasswordReset();
+    const email = document.getElementById("login-email").value.trim();
+    await sendResetMailToEmail(email);
     alert("Reset-Mail wurde gesendet.");
   } catch (error) {
     console.error(error);
