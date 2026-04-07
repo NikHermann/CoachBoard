@@ -18,7 +18,8 @@ export async function loadUsers(usersList) {
     const card = createCard(`User: ${data.username || data.name || userDoc.id}`, [
       `ID: ${userDoc.id}`,
       `Club: ${data.club || "-"}`,
-      `Rolle: ${data.role || "-"}`
+      `Rolle: ${data.role || "-"}`,
+      `E-Mail: ${data.email || "-"}`
     ]);
 
     const deleteBtn = createDeleteButton("User löschen", async () => {
@@ -38,15 +39,19 @@ export async function createUser(reloadUsers) {
   const username = prompt("Benutzername:");
   if (!username) return;
 
+  const email = prompt("E-Mail:");
+  if (!email) return;
+
   const club = prompt("Verein/Club:");
   if (!club) return;
 
-  const role = prompt("Rolle (admin / trainerteam / spieler):");
+  const role = prompt("Rolle (admin / staff / player):");
   if (!role) return;
 
   try {
     await addDoc(collection(db, "users"), {
       username,
+      email,
       club,
       role
     });
