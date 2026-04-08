@@ -6,6 +6,8 @@ import {
   logout,
   changeOwnPassword,
   sendResetMailToEmail,
+  sendOwnVerificationEmail,
+  getOwnEmailVerificationStatus,
   observeAuth
 } from "./authService.js";
 
@@ -22,6 +24,9 @@ const loginBtn = document.getElementById("login-btn");
 const logoutBtn = document.getElementById("logout-btn");
 const changePasswordBtn = document.getElementById("change-password-btn");
 const resetPasswordBtn = document.getElementById("reset-password-btn");
+
+const verifyEmailBtn = document.getElementById("verify-email-btn");
+const checkVerificationBtn = document.getElementById("check-verification-btn");
 
 async function reloadUsers() {
   await loadUsers(usersList);
@@ -92,6 +97,26 @@ resetPasswordBtn.addEventListener("click", async () => {
     const email = document.getElementById("login-email").value.trim();
     await sendResetMailToEmail(email);
     alert("Reset-Mail wurde gesendet.");
+  } catch (error) {
+    console.error(error);
+    alert(error.message);
+  }
+});
+
+verifyEmailBtn.addEventListener("click", async () => {
+  try {
+    await sendOwnVerificationEmail();
+    alert("Verifikationsmail wurde gesendet.");
+  } catch (error) {
+    console.error(error);
+    alert(error.message);
+  }
+});
+
+checkVerificationBtn.addEventListener("click", async () => {
+  try {
+    const verified = await getOwnEmailVerificationStatus();
+    alert(verified ? "E-Mail ist verifiziert." : "E-Mail ist noch nicht verifiziert.");
   } catch (error) {
     console.error(error);
     alert(error.message);

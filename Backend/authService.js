@@ -4,9 +4,11 @@ import {
   signOut,
   updatePassword,
   sendPasswordResetEmail,
+  sendEmailVerification,
   EmailAuthProvider,
   reauthenticateWithCredential,
-  onAuthStateChanged
+  onAuthStateChanged,
+  reload
 } from "firebase/auth";
 
 export function observeAuth(callback) {
@@ -39,4 +41,25 @@ export async function sendResetMailToEmail(email) {
   }
 
   await sendPasswordResetEmail(auth, email);
+}
+
+export async function sendOwnVerificationEmail() {
+  const user = auth.currentUser;
+
+  if (!user) {
+    throw new Error("Kein Benutzer eingeloggt.");
+  }
+
+  await sendEmailVerification(user);
+}
+
+export async function getOwnEmailVerificationStatus() {
+  const user = auth.currentUser;
+
+  if (!user) {
+    return false;
+  }
+
+  await reload(user);
+  return user.emailVerified;
 }
