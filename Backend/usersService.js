@@ -4,10 +4,11 @@ import {
   getDocs,
   doc,
   deleteDoc,
-  setDoc
+  setDoc,
+  updateDoc
 } from "firebase/firestore";
-import { createUserWithEmailAndPassword } from "firebase/auth";
 import { createCard, createDeleteButton } from "./ui.js";
+import { createUserWithEmailAndPassword } from "firebase/auth";
 
 // Rendert alle User-Profile aus Firestore
 export async function loadUsers(usersList) {
@@ -18,11 +19,18 @@ export async function loadUsers(usersList) {
     const data = userDoc.data();
 
     const card = createCard(`User: ${data.username || data.name || userDoc.id}`, [
-      `ID: ${data.userDoc || userDoc.id}`,
+      `ID: ${data.uid || userDoc.id}`,
       `E-Mail: ${data.email || "-"}`,
       `Club: ${data.club || "-"}`,
       `Rolle: ${data.role || "-"}`
     ]);
+
+    const editBtn = document.createElement("button");
+    editBtn.textContent = "User bearbeiten";
+    editBtn.style.marginRight = "8px";
+    editBtn.addEventListener("click", async () => {
+      await editUser(userDoc.id, data, () => loadUsers(usersList));
+    });
 
     const deleteBtn = createDeleteButton("User löschen", async () => {
       const confirmed = confirm(`User ${userDoc.id} wirklich löschen?`);
@@ -32,9 +40,38 @@ export async function loadUsers(usersList) {
       await loadUsers(usersList);
     });
 
+    card.appendChild(editBtn);
     card.appendChild(deleteBtn);
     usersList.appendChild(card);
   });
+}
+
+async function editUser(userId, currentData, reloadUsers) {
+  const username = prompt("Benutzername:", currentData.username || "");
+  if (username === null) return;
+
+  const email = prompt("E-Mail:", currentData.email || "");
+  if (email === null) return;
+
+  const club = prompt("Verein/Club:", currentData.club || "");
+  if (club === null) return;
+
+  const role = prompt("Rolle (admin / staff / player):", currentData.role || "");
+  if (role === null) return;
+
+  try {
+    await updateDoc(doc(db, "users", userId), {
+      username: username.trim(),
+      email: email.trim(),
+      club: club.trim(),
+      role: role.trim()
+    });
+
+    await reloadUsers();
+  } catch (error) {
+    console.error("Fehler beim Bearbeiten des Users:", error);
+    alert("User konnte nicht bearbeitet werden.");
+  }
 }
 
 // Erstellt einen Auth-User mit Passwort und synchronisiert danach das Profil in Firestore
