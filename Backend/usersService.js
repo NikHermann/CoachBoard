@@ -9,6 +9,7 @@ import {
 import { createUserWithEmailAndPassword } from "firebase/auth";
 import { createCard, createDeleteButton } from "./ui.js";
 
+// Rendert alle User-Profile aus Firestore
 export async function loadUsers(usersList) {
   usersList.innerHTML = "";
   const snapshot = await getDocs(collection(db, "users"));
@@ -17,7 +18,7 @@ export async function loadUsers(usersList) {
     const data = userDoc.data();
 
     const card = createCard(`User: ${data.username || data.name || userDoc.id}`, [
-      `ID: ${userDoc.id}`,
+      `ID: ${data.userDoc || userDoc.id}`,
       `E-Mail: ${data.email || "-"}`,
       `Club: ${data.club || "-"}`,
       `Rolle: ${data.role || "-"}`
@@ -36,6 +37,7 @@ export async function loadUsers(usersList) {
   });
 }
 
+// Erstellt einen Auth-User mit Passwort und synchronisiert danach das Profil in Firestore
 export async function createUser(reloadUsers) {
   const username = prompt("Benutzername:");
   if (!username) return;

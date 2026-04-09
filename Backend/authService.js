@@ -11,18 +11,22 @@ import {
   reload
 } from "firebase/auth";
 
+// Beobachtet, ob sich der Login-Zustand ändert
 export function observeAuth(callback) {
   return onAuthStateChanged(auth, callback);
 }
 
+// Login mit E-Mail und Passwort
 export async function login(email, password) {
   await signInWithEmailAndPassword(auth, email, password);
 }
 
+// Logout des aktuellen Users
 export async function logout() {
   await signOut(auth);
 }
 
+// Passwort ändern: dafür verlangt Firebase meist das aktuelle Passwort erneut
 export async function changeOwnPassword(currentPassword, newPassword) {
   const user = auth.currentUser;
 
@@ -35,6 +39,7 @@ export async function changeOwnPassword(currentPassword, newPassword) {
   await updatePassword(user, newPassword);
 }
 
+// Sendet eine Reset-Mail an eine bestimmte E-Mail-Adresse
 export async function sendResetMailToEmail(email) {
   if (!email) {
     throw new Error("Keine E-Mail angegeben.");
@@ -43,6 +48,7 @@ export async function sendResetMailToEmail(email) {
   await sendPasswordResetEmail(auth, email);
 }
 
+// Sendet eine Verifikationsmail an den aktuell eingeloggten User
 export async function sendOwnVerificationEmail() {
   const user = auth.currentUser;
 
@@ -53,6 +59,7 @@ export async function sendOwnVerificationEmail() {
   await sendEmailVerification(user);
 }
 
+// Lädt den User neu von Firebase und prüft dann emailVerified
 export async function getOwnEmailVerificationStatus() {
   const user = auth.currentUser;
 

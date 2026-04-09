@@ -9,6 +9,7 @@
 <body>
   <h1>CoachBoard Datenbank</h1>
 
+  <!-- Allgemeine Aktionen -->
   <button id="reload-btn">Neu laden</button>
   <button id="create-user-btn">User erstellen</button>
   <button id="create-training-btn">Training erstellen</button>
@@ -16,6 +17,7 @@
 
   <h2>Auth</h2>
 
+  <!-- Login / Logout -->
   <div>
     <input id="login-email" type="email" placeholder="E-Mail" />
     <input id="login-password" type="password" placeholder="Passwort" />
@@ -23,11 +25,13 @@
     <button id="logout-btn">Logout</button>
   </div>
 
+  <!-- E-Mail-Verifikation -->
   <div style="margin-top: 10px;">
     <button id="verify-email-btn">Verifikationsmail senden</button>
     <button id="check-verification-btn">Verifikation prüfen</button>
   </div>
 
+  <!-- Passwort-Funktionen -->
   <div style="margin-top: 10px;">
     <input id="current-password" type="password" placeholder="Aktuelles Passwort" />
     <input id="new-password" type="password" placeholder="Neues Passwort" />
@@ -44,6 +48,7 @@
   <h2>Exercises</h2>
   <div id="exercises-list"></div>
 
+  <!-- Einstiegspunkt der App -->
   <script type="module" src="./main.js"></script>
 </body>
 

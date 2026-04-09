@@ -11,15 +11,18 @@ import {
   observeAuth
 } from "./authService.js";
 
+// Haupt-Container aus dem HTML
 const usersList = document.getElementById("users-list");
 const trainingsList = document.getElementById("trainings-list");
 const exercisesList = document.getElementById("exercises-list");
 
+// Buttons für die Datenbankverwaltung
 const reloadBtn = document.getElementById("reload-btn");
 const createUserBtn = document.getElementById("create-user-btn");
 const createTrainingBtn = document.getElementById("create-training-btn");
 const createExerciseBtn = document.getElementById("create-exercise-btn");
 
+// Buttons für Auth-Funktionen
 const loginBtn = document.getElementById("login-btn");
 const logoutBtn = document.getElementById("logout-btn");
 const changePasswordBtn = document.getElementById("change-password-btn");
@@ -28,6 +31,7 @@ const resetPasswordBtn = document.getElementById("reset-password-btn");
 const verifyEmailBtn = document.getElementById("verify-email-btn");
 const checkVerificationBtn = document.getElementById("check-verification-btn");
 
+// Wrapper-Funktionen, damit die Services nur den jeweiligen Bereich neu laden
 async function reloadUsers() {
   await loadUsers(usersList);
 }
@@ -40,6 +44,7 @@ async function reloadExercises() {
   await loadExercises(exercisesList, reloadTrainings);
 }
 
+// Lädt alle drei Hauptbereiche der Seite neu
 async function loadAll() {
   try {
     await reloadUsers();
@@ -51,11 +56,13 @@ async function loadAll() {
   }
 }
 
+// Allgemeine DB-Aktionen
 reloadBtn.addEventListener("click", loadAll);
 createUserBtn.addEventListener("click", () => createUser(reloadUsers));
 createTrainingBtn.addEventListener("click", () => createTraining(reloadTrainings));
 createExerciseBtn.addEventListener("click", () => createExercise(reloadExercises, reloadTrainings));
 
+// Login mit E-Mail + Passwort
 loginBtn.addEventListener("click", async () => {
   try {
     const email = document.getElementById("login-email").value.trim();
@@ -69,6 +76,7 @@ loginBtn.addEventListener("click", async () => {
   }
 });
 
+// Logout des aktuell eingeloggten Users
 logoutBtn.addEventListener("click", async () => {
   try {
     await logout();
@@ -79,6 +87,7 @@ logoutBtn.addEventListener("click", async () => {
   }
 });
 
+// Eigenes Passwort ändern
 changePasswordBtn.addEventListener("click", async () => {
   try {
     const currentPassword = document.getElementById("current-password").value;
@@ -92,6 +101,7 @@ changePasswordBtn.addEventListener("click", async () => {
   }
 });
 
+// Reset-Mail an die eingegebene Login-E-Mail senden
 resetPasswordBtn.addEventListener("click", async () => {
   try {
     const email = document.getElementById("login-email").value.trim();
@@ -103,6 +113,7 @@ resetPasswordBtn.addEventListener("click", async () => {
   }
 });
 
+// Verifikationsmail an den aktuell eingeloggten User senden
 verifyEmailBtn.addEventListener("click", async () => {
   try {
     await sendOwnVerificationEmail();
@@ -113,6 +124,7 @@ verifyEmailBtn.addEventListener("click", async () => {
   }
 });
 
+// Prüft, ob die E-Mail des aktuellen Users bereits bestätigt wurde
 checkVerificationBtn.addEventListener("click", async () => {
   try {
     const verified = await getOwnEmailVerificationStatus();
@@ -123,8 +135,10 @@ checkVerificationBtn.addEventListener("click", async () => {
   }
 });
 
+// Reagiert auf Login/Logout-Wechsel
 observeAuth((user) => {
   console.log("Auth state changed:", user?.email || "kein Login");
 });
 
+// Initiales Laden der Seite
 loadAll();
