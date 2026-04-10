@@ -1,14 +1,17 @@
+// Schwellwerte für Upload und Komprimierung
 export const DIRECT_UPLOAD_LIMIT = 80 * 1024;
 export const TARGET_COMPRESSED_BYTES = 70 * 1024;
 export const MAX_FINAL_BYTES = 120 * 1024;
 export const ABSOLUTE_FILE_LIMIT = 15 * 1024 * 1024;
 
+// Formatiert Byte-Werte lesbar für die UI
 export function formatBytes(bytes) {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 }
 
+// Liest eine Datei als Base64/Data-URL ein
 export function fileToDataUrl(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -20,6 +23,7 @@ export function fileToDataUrl(file) {
   });
 }
 
+// Lädt eine Datei als Image-Objekt für Canvas-Verarbeitung
 export function loadImageFromFile(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -36,11 +40,13 @@ export function loadImageFromFile(file) {
   });
 }
 
+// Schätzt die tatsächliche Größe einer Base64-Data-URL
 export function estimateDataUrlSize(dataUrl) {
   const base64 = dataUrl.split(",")[1] || "";
   return Math.ceil((base64.length * 3) / 4);
 }
 
+// Zeichnet das Bild in ein Canvas und gibt es als JPEG-Data-URL zurück
 export function renderImageToDataUrl(img, width, height, quality) {
   const canvas = document.createElement("canvas");
   canvas.width = width;
@@ -52,6 +58,7 @@ export function renderImageToDataUrl(img, width, height, quality) {
   return canvas.toDataURL("image/jpeg", quality);
 }
 
+// Komprimiert Bilder schrittweise über Größe und JPEG-Qualität
 export async function compressImageToDataUrl(file, options = {}) {
   const {
     maxWidth = 1200,
@@ -94,6 +101,7 @@ export async function compressImageToDataUrl(file, options = {}) {
   return dataUrl;
 }
 
+// Entscheidet, ob direkt gespeichert oder zuerst komprimiert werden soll
 export async function prepareExerciseImageDataUrl(file) {
   if (file.size > ABSOLUTE_FILE_LIMIT) {
     throw new Error(

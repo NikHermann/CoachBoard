@@ -9,6 +9,7 @@ import {
 } from "firebase/firestore";
 import { createActionButton, createCard, createDeleteButton } from "./ui.js";
 
+// Unterstützt alte und neue Feldnamen für Übungen im Training
 export function getTrainingExerciseIds(trainingData) {
   if (Array.isArray(trainingData.exerciseIDs)) {
     return trainingData.exerciseIDs;
@@ -21,6 +22,7 @@ export function getTrainingExerciseIds(trainingData) {
   return [];
 }
 
+// Summiert die Dauer aller im Training enthaltenen Exercises
 export function calculateTrainingDuration(exerciseIds, exerciseMap) {
   return exerciseIds.reduce((sum, exerciseId) => {
     const exercise = exerciseMap.get(exerciseId);
@@ -28,6 +30,7 @@ export function calculateTrainingDuration(exerciseIds, exerciseMap) {
   }, 0);
 }
 
+// Speichert die Exercise-Zuordnung und aktualisiert gleichzeitig die Dauer
 async function saveTrainingExercises(trainingId, exerciseIds) {
   const exercisesSnapshot = await getDocs(collection(db, "exercises"));
   const exerciseMap = new Map();
@@ -57,6 +60,7 @@ export async function removeExerciseFromTraining(trainingId, currentExerciseIds,
   await saveTrainingExercises(trainingId, nextExerciseIds);
 }
 
+// Wird benötigt, wenn eine Exercise komplett gelöscht wird
 export async function removeExerciseFromAllTrainings(exerciseId) {
   const [trainingsSnapshot, exercisesSnapshot] = await Promise.all([
     getDocs(collection(db, "trainings")),
@@ -96,6 +100,7 @@ export async function removeExerciseFromAllTrainings(exerciseId) {
   }
 }
 
+// Rendert alle Trainings und deren Exercise-Zuordnung
 export async function loadTrainings(trainingsList) {
   trainingsList.innerHTML = "";
 
@@ -240,6 +245,7 @@ export async function loadTrainings(trainingsList) {
   });
 }
 
+// Neues Training anlegen
 export async function createTraining(reloadTrainings) {
   const title = prompt("Titel des Trainings:");
   if (!title) return;

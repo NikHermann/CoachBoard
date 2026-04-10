@@ -1,3 +1,4 @@
+// Standard-Button für destruktive Aktionen wie Löschen
 export function createDeleteButton(label, onClick) {
   const btn = document.createElement("button");
   btn.textContent = label;
@@ -6,6 +7,7 @@ export function createDeleteButton(label, onClick) {
   return btn;
 }
 
+// Standard-Button für normale Aktionen
 export function createActionButton(label, onClick) {
   const btn = document.createElement("button");
   btn.textContent = label;
@@ -14,6 +16,7 @@ export function createActionButton(label, onClick) {
   return btn;
 }
 
+// Einheitliches Kartenlayout für Users, Trainings und Exercises
 export function createCard(title, lines = []) {
   const wrapper = document.createElement("div");
   wrapper.style.border = "1px solid #ccc";
