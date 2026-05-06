@@ -2,273 +2,285 @@ import { db } from "./firebase.js";
 import {
   collection,
   getDocs,
-  doc,
-  deleteDoc,
+  addDoc,
   updateDoc,
-  addDoc
+  doc
 } from "firebase/firestore";
-import { createActionButton, createCard, createDeleteButton } from "./ui.js";
 
-export function getTrainingExerciseIds(trainingData) {
-  if (Array.isArray(trainingData.exerciseIDs)) {
-    return trainingData.exerciseIDs;
+function toSafeString(value) {
+  return String(value ?? "").trim();
+}
+
+function parseDurationToNumber(value) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
   }
 
-  if (Array.isArray(trainingData.exercises)) {
-    return trainingData.exercises;
+  const text = toSafeString(value);
+  if (!text) return 0;
+
+  const match = text.match(/\d+/);
+  if (!match) return 0;
+
+  return Number(match[0]);
+}
+
+function normalizeWarmupEntry(warmup) {
+  if (!warmup || typeof warmup !== "object") {
+    return null;
+  }
+
+  const normalized = {
+    name: toSafeString(warmup.name),
+    duration: toSafeString(warmup.duration),
+    description: toSafeString(warmup.description),
+    image_name: toSafeString(warmup.image_name)
+  };
+
+  const hasContent =
+      normalized.name ||
+      normalized.duration ||
+      normalized.description ||
+      normalized.image_name;
+
+  return hasContent ? normalized : null;
+}
+
+function normalizeExerciseEntry(exercise) {
+  const normalized = {
+    name: toSafeString(exercise?.name),
+    duration: toSafeString(exercise?.duration),
+    description: toSafeString(exercise?.description),
+    material: toSafeString(exercise?.material),
+    sketch_file_name: toSafeString(exercise?.sketch_file_name)
+  };
+
+  const hasContent =
+      normalized.name ||
+      normalized.duration ||
+      normalized.description ||
+      normalized.material ||
+      normalized.sketch_file_name;
+
+  return hasContent ? normalized : null;
+}
+
+function calculateDurationFromExerciseEntries(exercises, warmup) {
+  const exerciseMinutes = exercises.reduce((sum, exercise) => {
+    return sum + parseDurationToNumber(exercise.duration);
+  }, 0);
+
+  const warmupMinutes = warmup ? parseDurationToNumber(warmup.duration) : 0;
+
+  return exerciseMinutes + warmupMinutes;
+}
+
+function getTrainingExerciseIds(trainingData) {
+  if (Array.isArray(trainingData.exerciseIDs)) {
+    return trainingData.exerciseIDs.filter(Boolean);
   }
 
   return [];
 }
 
-export function calculateTrainingDuration(exerciseIds, exerciseMap) {
-  return exerciseIds.reduce((sum, exerciseId) => {
-    const exercise = exerciseMap.get(exerciseId);
-    return sum + Number(exercise?.duration || 0);
-  }, 0);
+function createTrainingPayload(trainingData, preserveCreatedAt = null) {
+  const title = toSafeString(trainingData.title);
+  const age_group = toSafeString(trainingData.age_group);
+  const required_players = Number(trainingData.required_players || 0);
+  const enteredDuration = parseDurationToNumber(trainingData.duration);
+  const is_template = Boolean(trainingData.is_template);
+  const session_date = toSafeString(trainingData.session_date);
+  const notes = toSafeString(trainingData.notes);
+  const sketch_file_name = toSafeString(trainingData.sketch_file_name);
+  const created_by_user_id = toSafeString(trainingData.created_by_user_id);
+  const created_by_username = toSafeString(trainingData.created_by_username);
+
+  const warmup = normalizeWarmupEntry(trainingData.warmup);
+  const exercises = Array.isArray(trainingData.exercises)
+      ? trainingData.exercises.map(normalizeExerciseEntry).filter(Boolean)
+      : [];
+
+  const fallbackDuration = calculateDurationFromExerciseEntries(exercises, warmup);
+  const finalDuration = enteredDuration || fallbackDuration;
+
+  return {
+    title,
+    age_group,
+    required_players,
+    duration: finalDuration,
+    exerciseIDs: [],
+    exercises,
+    warmup,
+    is_template,
+    session_date,
+    notes,
+    description: notes,
+    sketch_file_name,
+    created_by_user_id,
+    created_by_username,
+    created_at: preserveCreatedAt || new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  };
 }
 
-async function saveTrainingExercises(trainingId, exerciseIds) {
-  const exercisesSnapshot = await getDocs(collection(db, "exercises"));
-  const exerciseMap = new Map();
+export async function fetchTrainingEntries() {
+  const trainingsSnapshot = await getDocs(collection(db, "trainings"));
 
-  exercisesSnapshot.forEach((exerciseDoc) => {
-    exerciseMap.set(exerciseDoc.id, exerciseDoc.data());
-  });
-
-  const duration = calculateTrainingDuration(exerciseIds, exerciseMap);
-
-  await updateDoc(doc(db, "trainings", trainingId), {
-    exerciseIDs: exerciseIds,
-    duration
-  });
-}
-
-export async function addExerciseToTraining(trainingId, currentExerciseIds, exerciseId) {
-  if (!exerciseId) return;
-  if (currentExerciseIds.includes(exerciseId)) return;
-
-  const nextExerciseIds = [...currentExerciseIds, exerciseId];
-  await saveTrainingExercises(trainingId, nextExerciseIds);
-}
-
-export async function removeExerciseFromTraining(trainingId, currentExerciseIds, exerciseId) {
-  const nextExerciseIds = currentExerciseIds.filter((id) => id !== exerciseId);
-  await saveTrainingExercises(trainingId, nextExerciseIds);
-}
-
-export async function removeExerciseFromAllTrainings(exerciseId) {
-  const [trainingsSnapshot, exercisesSnapshot] = await Promise.all([
-    getDocs(collection(db, "trainings")),
-    getDocs(collection(db, "exercises"))
-  ]);
-
-  const exerciseMap = new Map();
-
-  exercisesSnapshot.forEach((exerciseDoc) => {
-    if (exerciseDoc.id !== exerciseId) {
-      exerciseMap.set(exerciseDoc.id, exerciseDoc.data());
-    }
-  });
-
-  for (const trainingDoc of trainingsSnapshot.docs) {
+  return trainingsSnapshot.docs.map((trainingDoc) => {
     const data = trainingDoc.data();
-    const exerciseIds = getTrainingExerciseIds(data);
 
-    if (exerciseIds.includes(exerciseId)) {
-      const nextExerciseIds = exerciseIds.filter((id) => id !== exerciseId);
-      const nextDuration = calculateTrainingDuration(nextExerciseIds, exerciseMap);
+    const warmup = normalizeWarmupEntry(data.warmup);
+    const exercises = Array.isArray(data.exercises)
+        ? data.exercises.map(normalizeExerciseEntry).filter(Boolean)
+        : [];
 
-      const updateData = {
-        duration: nextDuration
+    const storedDuration = parseDurationToNumber(data.duration);
+    const calculatedDuration = calculateDurationFromExerciseEntries(exercises, warmup);
+
+    return {
+      id: trainingDoc.id,
+      title: toSafeString(data.title) || "Unbenanntes Training",
+      age_group: toSafeString(data.age_group) || "—",
+      required_players: Number(data.required_players ?? 0),
+      duration: storedDuration || calculatedDuration || 0,
+      exerciseIDs: getTrainingExerciseIds(data),
+      is_template: Boolean(data.is_template),
+      session_date: toSafeString(data.session_date || data.created_at),
+      created_at: toSafeString(data.created_at),
+      updated_at: toSafeString(data.updated_at),
+      description: toSafeString(data.description || data.notes),
+      notes: toSafeString(data.notes),
+      warmup,
+      exercises,
+      sketch_file_name: toSafeString(data.sketch_file_name),
+      created_by_user_id: toSafeString(data.created_by_user_id),
+      created_by_username: toSafeString(data.created_by_username)
+    };
+  });
+}
+
+export async function createTraining(reloadTrainings, trainingData = null) {
+  if (trainingData && typeof trainingData === "object") {
+    const payload = createTrainingPayload(trainingData);
+
+    if (
+        !payload.title ||
+        !payload.age_group ||
+        payload.required_players < 3 ||
+        payload.required_players > 20 ||
+        !payload.session_date
+    ) {
+      alert("Bitte Titel, Datum, Altersgruppe und eine gültige Spieleranzahl angeben.");
+      return null;
+    }
+
+    try {
+      const docRef = await addDoc(collection(db, "trainings"), payload);
+
+      if (typeof reloadTrainings === "function") {
+        await reloadTrainings();
+      }
+
+      return {
+        id: docRef.id,
+        ...payload
       };
-
-      if (Array.isArray(data.exerciseIDs)) {
-        updateData.exerciseIDs = nextExerciseIds;
-      }
-
-      if (Array.isArray(data.exercises)) {
-        updateData.exercises = nextExerciseIds;
-      }
-
-      await updateDoc(doc(db, "trainings", trainingDoc.id), updateData);
+    } catch (error) {
+      console.error("Fehler beim Erstellen des Trainings:", error);
+      alert("Training konnte nicht erstellt werden.");
+      return null;
     }
   }
-}
 
-export async function loadTrainings(trainingsList) {
-  trainingsList.innerHTML = "";
-
-  const [trainingsSnapshot, exercisesSnapshot] = await Promise.all([
-    getDocs(collection(db, "trainings")),
-    getDocs(collection(db, "exercises"))
-  ]);
-
-  const exerciseMap = new Map();
-  const allExercises = [];
-
-  exercisesSnapshot.forEach((exerciseDoc) => {
-    const exerciseData = exerciseDoc.data();
-
-    exerciseMap.set(exerciseDoc.id, exerciseData);
-    allExercises.push({
-      id: exerciseDoc.id,
-      ...exerciseData
-    });
-  });
-
-  trainingsSnapshot.forEach((trainingDoc) => {
-    const data = trainingDoc.data();
-    const exerciseIds = getTrainingExerciseIds(data);
-    const calculatedDuration = calculateTrainingDuration(exerciseIds, exerciseMap);
-
-    const card = createCard(`Training: ${data.title || trainingDoc.id}`, [
-      `ID: ${trainingDoc.id}`,
-      `Altersgruppe: ${data.age_group ?? "-"}`,
-      `Dauer: ${calculatedDuration} min`,
-      `Benötigte Spieler: ${data.required_players ?? "-"}`
-    ]);
-
-    const exercisesTitle = document.createElement("h4");
-    exercisesTitle.textContent = "Exercises in this training:";
-    exercisesTitle.style.marginTop = "10px";
-    card.appendChild(exercisesTitle);
-
-    if (exerciseIds.length === 0) {
-      const emptyText = document.createElement("p");
-      emptyText.textContent = "No exercises in this training";
-      card.appendChild(emptyText);
-    } else {
-      exerciseIds.forEach((exerciseId) => {
-        const exerciseData = exerciseMap.get(exerciseId);
-
-        const row = document.createElement("div");
-        row.style.marginBottom = "8px";
-
-        const label = document.createElement("span");
-        label.textContent = exerciseData
-          ? `${exerciseData.name || exerciseId} (${exerciseData.duration ?? 0} min)`
-          : exerciseId;
-
-        const removeBtn = createActionButton("Aus Training entfernen", async () => {
-          try {
-            await removeExerciseFromTraining(trainingDoc.id, exerciseIds, exerciseId);
-            await loadTrainings(trainingsList);
-          } catch (error) {
-            console.error("Fehler beim Entfernen der Exercise aus dem Training:", error);
-            alert("Exercise konnte nicht aus dem Training entfernt werden.");
-          }
-        });
-
-        row.appendChild(label);
-        row.appendChild(document.createTextNode(" "));
-        row.appendChild(removeBtn);
-        card.appendChild(row);
-      });
-    }
-
-    const addSectionTitle = document.createElement("h4");
-    addSectionTitle.textContent = "Exercise hinzufügen:";
-    addSectionTitle.style.marginTop = "14px";
-    card.appendChild(addSectionTitle);
-
-    if (allExercises.length === 0) {
-      const noExercisesText = document.createElement("p");
-      noExercisesText.textContent = "Es gibt aktuell keine Exercises in der Datenbank.";
-      card.appendChild(noExercisesText);
-    } else {
-      const availableExercises = allExercises.filter(
-        (exercise) => !exerciseIds.includes(exercise.id)
-      );
-
-      if (availableExercises.length === 0) {
-        const noAvailableText = document.createElement("p");
-        noAvailableText.textContent = "Alle vorhandenen Exercises sind bereits in diesem Training.";
-        card.appendChild(noAvailableText);
-      } else {
-        const select = document.createElement("select");
-        select.style.marginTop = "10px";
-        select.style.marginRight = "8px";
-
-        const defaultOption = document.createElement("option");
-        defaultOption.value = "";
-        defaultOption.textContent = "-- Exercise auswählen --";
-        select.appendChild(defaultOption);
-
-        availableExercises.forEach((exercise) => {
-          const option = document.createElement("option");
-          option.value = exercise.id;
-          option.textContent = `${exercise.name || exercise.id} (${exercise.duration ?? 0} min)`;
-          select.appendChild(option);
-        });
-
-        const addBtn = createActionButton("Exercise hinzufügen", async () => {
-          const selectedExerciseId = select.value;
-
-          if (!selectedExerciseId) {
-            alert("Bitte zuerst eine Exercise auswählen.");
-            return;
-          }
-
-          try {
-            await addExerciseToTraining(trainingDoc.id, exerciseIds, selectedExerciseId);
-            await loadTrainings(trainingsList);
-          } catch (error) {
-            console.error("Fehler beim Hinzufügen der Exercise zum Training:", error);
-            alert("Exercise konnte nicht zum Training hinzugefügt werden.");
-          }
-        });
-
-        card.appendChild(select);
-        card.appendChild(addBtn);
-      }
-    }
-
-    const deleteBtn = createDeleteButton("Training löschen", async () => {
-      const confirmed = confirm(`Training ${trainingDoc.id} wirklich löschen?`);
-      if (!confirmed) return;
-
-      await deleteDoc(doc(db, "trainings", trainingDoc.id));
-      await loadTrainings(trainingsList);
-    });
-
-    card.appendChild(document.createElement("br"));
-    card.appendChild(document.createElement("br"));
-    card.appendChild(deleteBtn);
-
-    trainingsList.appendChild(card);
-  });
-}
-
-export async function createTraining(reloadTrainings) {
   const title = prompt("Titel des Trainings:");
-  if (!title) return;
+  if (!title) return null;
 
-  const ageGroup = prompt("Altersgruppe:");
-  if (!ageGroup) return;
+  const age_group = prompt("Altersgruppe (z. B. U13):");
+  if (!age_group) return null;
 
   const requiredPlayersInput = prompt("Benötigte Spieler:");
-  if (!requiredPlayersInput) return;
+  if (!requiredPlayersInput) return null;
 
   const required_players = Number(requiredPlayersInput);
 
-  if (Number.isNaN(required_players)) {
-    alert("Benötigte Spieler müssen eine Zahl sein.");
-    return;
+  if (Number.isNaN(required_players) || required_players <= 0) {
+    alert("Bitte eine gültige Spieleranzahl eingeben.");
+    return null;
   }
 
-  try {
-    await addDoc(collection(db, "trainings"), {
-      title,
-      age_group: ageGroup,
-      duration: 0,
-      required_players,
-      exerciseIDs: []
-    });
+  const isTemplateAnswer = prompt("Als Mustertraining speichern? (ja/nein)");
+  const is_template = toSafeString(isTemplateAnswer).toLowerCase() === "ja";
 
-    await reloadTrainings();
+  try {
+    const payload = {
+      title: toSafeString(title),
+      age_group: toSafeString(age_group),
+      required_players,
+      duration: 0,
+      exerciseIDs: [],
+      exercises: [],
+      warmup: null,
+      is_template,
+      session_date: new Date().toISOString().slice(0, 10),
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      notes: "",
+      description: "",
+      sketch_file_name: "",
+      created_by_user_id: "",
+      created_by_username: ""
+    };
+
+    const docRef = await addDoc(collection(db, "trainings"), payload);
+
+    if (typeof reloadTrainings === "function") {
+      await reloadTrainings();
+    }
+
+    return {
+      id: docRef.id,
+      ...payload
+    };
   } catch (error) {
     console.error("Fehler beim Erstellen des Trainings:", error);
     alert("Training konnte nicht erstellt werden.");
+    return null;
+  }
+}
+
+export async function updateTraining(trainingId, reloadTrainings, trainingData = null) {
+  if (!trainingId || !trainingData || typeof trainingData !== "object") {
+    alert("Training konnte nicht aktualisiert werden.");
+    return null;
+  }
+
+  const payload = createTrainingPayload(trainingData, trainingData.created_at || null);
+
+  if (
+      !payload.title ||
+      !payload.age_group ||
+      payload.required_players < 3 ||
+      payload.required_players > 20 ||
+      !payload.session_date
+  ) {
+    alert("Bitte Titel, Datum, Altersgruppe und eine gültige Spieleranzahl angeben.");
+    return null;
+  }
+
+  try {
+    await updateDoc(doc(db, "trainings", trainingId), payload);
+
+    if (typeof reloadTrainings === "function") {
+      await reloadTrainings();
+    }
+
+    return {
+      id: trainingId,
+      ...payload
+    };
+  } catch (error) {
+    console.error("Fehler beim Aktualisieren des Trainings:", error);
+    alert("Training konnte nicht aktualisiert werden.");
+    return null;
   }
 }

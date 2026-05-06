@@ -2,25 +2,518 @@
 <html lang="de">
 <head>
   <meta charset="UTF-8" />
-  <title>CoachBoard DB Viewer</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Trainingsdatenbank</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./app.css" />
 </head>
 <body>
-  <h1>CoachBoard Datenbank</h1>
+<section id="auth-screen" class="auth-screen">
+  <div class="auth-card">
+    <div class="auth-brand">
+      <h1>TSV Ottensheim</h1>
+      <p>Trainingsdatenbank</p>
+    </div>
 
-  <button id="reload-btn">Neu laden</button>
-  <button id="create-user-btn">User erstellen</button>
-  <button id="create-training-btn">Training erstellen</button>
-  <button id="create-exercise-btn">Exercise erstellen</button>
+    <div class="auth-tabs">
+      <button class="auth-tab is-active" type="button" data-auth-tab="login">Anmelden</button>
+      <button class="auth-tab" type="button" data-auth-tab="register">Konto erstellen</button>
+    </div>
 
-  <h2>Users</h2>
-  <div id="users-list"></div>
+    <div id="auth-login-panel">
+      <form id="login-form" class="auth-form">
+        <label class="field">
+          <span class="field__label">Benutzername</span>
+          <input
+                  id="login-username"
+                  class="field__control"
+                  type="text"
+                  placeholder="Benutzernamen eingeben"
+                  required
+          />
+        </label>
 
-  <h2>Trainings</h2>
-  <div id="trainings-list"></div>
+        <label class="field">
+          <span class="field__label">Passwort</span>
+          <input id="login-password" class="field__control" type="password" placeholder="Passwort eingeben" />
+        </label>
 
-  <h2>Exercises</h2>
-  <div id="exercises-list"></div>
+        <p class="auth-note">
+          Der Benutzername muss exakt eingegeben werden. Bestehende ältere Benutzer ohne Passwort können sich weiterhin anmelden.
+        </p>
 
-  <script type="module" src="./main.js"></script>
+        <button class="btn btn--primary btn--full" type="submit">Anmelden</button>
+      </form>
+    </div>
+
+    <div id="auth-register-panel" class="is-hidden">
+      <form id="register-form" class="auth-form">
+        <label class="field">
+          <span class="field__label">Benutzername</span>
+          <input class="field__control" type="text" name="username" required />
+        </label>
+
+        <label class="field">
+          <span class="field__label">Verein</span>
+          <input class="field__control" type="text" name="club" value="TSV Ottensheim" required />
+        </label>
+
+        <label class="field">
+          <span class="field__label">Passwort</span>
+          <input class="field__control" type="password" name="password" required />
+        </label>
+
+        <p class="auth-note">
+          Neue Accounts werden automatisch als <strong>Spieler</strong> angelegt.
+        </p>
+
+        <button class="btn btn--primary btn--full" type="submit">Konto erstellen</button>
+      </form>
+    </div>
+  </div>
+</section>
+
+<div id="dashboard-app" class="dashboard-app is-hidden">
+  <aside class="sidebar">
+    <div class="sidebar__brand">
+      <h1>TSV Ottensheim</h1>
+      <p>Trainingsdatenbank</p>
+    </div>
+
+    <div class="sidebar__action">
+      <button id="create-training-btn" class="btn btn--primary btn--full" type="button">
+        <span class="btn__icon">＋</span>
+        <span>Training erstellen</span>
+      </button>
+    </div>
+
+    <nav class="sidebar__nav" aria-label="Navigation">
+      <button class="nav-link is-active" type="button" data-view="library">
+        <span class="nav-link__icon">⌂</span>
+        <span>Bibliothek</span>
+      </button>
+
+      <button class="nav-link" type="button" data-view="my-trainings">
+        <span class="nav-link__icon">📄</span>
+        <span>Meine Trainings</span>
+      </button>
+
+      <button class="nav-link" type="button" data-view="template-trainings">
+        <span class="nav-link__icon">⬚</span>
+        <span>Mustertrainings</span>
+      </button>
+
+      <button class="nav-link" type="button" data-view="profile">
+        <span class="nav-link__icon">◌</span>
+        <span>Profil</span>
+      </button>
+    </nav>
+
+    <div class="sidebar__footer">
+      <span>Version 1.0.0</span>
+    </div>
+  </aside>
+
+  <div class="main-shell">
+    <header class="topbar">
+      <div></div>
+
+      <div class="topbar-actions">
+        <div class="profile-chip">
+          <div id="profile-avatar" class="profile-chip__avatar">?</div>
+          <div class="profile-chip__meta">
+            <strong id="topbar-username">—</strong>
+            <span id="topbar-role">—</span>
+          </div>
+        </div>
+
+        <button id="logout-btn" class="btn btn--secondary btn--small" type="button">Abmelden</button>
+      </div>
+    </header>
+
+    <main class="page-content">
+      <section id="listing-view" class="view-section is-active">
+        <div class="page-header">
+          <h2 id="page-title">Bibliothek</h2>
+          <p id="page-subtitle">Übersicht über alle Trainingseinheiten</p>
+        </div>
+
+        <section class="card filter-card">
+          <div class="section-heading">
+            <span class="section-heading__icon">⏃</span>
+            <h3>Suchen &amp; Filtern</h3>
+          </div>
+
+          <div class="filters-grid">
+            <label class="field">
+              <span class="field__label">Mannschaftsalter</span>
+              <select id="filter-age" class="field__control">
+                <option value="">Beliebig</option>
+              </select>
+            </label>
+
+            <label class="field">
+              <span class="field__label">Datum</span>
+              <input id="filter-date" class="field__control" type="date" />
+            </label>
+
+            <label class="field">
+              <span class="field__label">Spieleranzahl</span>
+              <select id="filter-players" class="field__control">
+                <option value="">Beliebig</option>
+              </select>
+            </label>
+
+            <label class="field">
+              <span class="field__label">Thema</span>
+              <input
+                      id="filter-topic"
+                      class="field__control"
+                      type="text"
+                      placeholder="Thema suchen..."
+              />
+            </label>
+          </div>
+
+          <div class="filter-actions">
+            <button id="apply-filters-btn" class="btn btn--primary" type="button">Filter anwenden</button>
+            <button id="reset-filters-btn" class="btn btn--secondary" type="button">Zurücksetzen</button>
+          </div>
+        </section>
+
+        <section class="card stats-card" id="stats-grid"></section>
+
+        <section class="table-block">
+          <h3 class="table-block__title">Aktuelle Trainings</h3>
+
+          <div class="table-card">
+            <div id="trainings-table-wrap"></div>
+          </div>
+
+          <div id="pagination" class="pagination"></div>
+        </section>
+      </section>
+
+      <section id="training-detail-view" class="view-section">
+        <button id="back-from-detail-btn" class="link-back" type="button">← Zurück zur Übersicht</button>
+
+        <div class="page-header">
+          <h2 id="training-detail-title">Training</h2>
+          <p id="training-detail-subtitle">Detailansicht der Trainingseinheit</p>
+        </div>
+
+        <div class="page-toolbar">
+          <button id="detail-edit-btn" class="btn btn--primary is-hidden" type="button">Training bearbeiten</button>
+        </div>
+
+        <section class="card detail-overview-card">
+          <div id="training-detail-meta" class="detail-meta-grid"></div>
+        </section>
+
+        <section class="card detail-section-card">
+          <h3 class="detail-section-title">Aufwärmen</h3>
+          <div id="training-detail-warmup"></div>
+        </section>
+
+        <section class="card detail-section-card">
+          <h3 class="detail-section-title">Übungen</h3>
+          <div id="training-detail-exercises"></div>
+        </section>
+
+        <section class="card detail-section-card">
+          <h3 class="detail-section-title">Skizze / Bild</h3>
+          <div id="training-detail-sketch"></div>
+        </section>
+
+        <section class="card detail-section-card">
+          <h3 class="detail-section-title">Notizen</h3>
+          <div id="training-detail-notes"></div>
+        </section>
+      </section>
+
+      <section id="training-create-view" class="view-section">
+        <button id="back-to-library-btn" class="link-back" type="button">← Zurück zur Bibliothek</button>
+
+        <div class="page-header page-header--editor">
+          <h2 id="training-editor-title">Training erstellen</h2>
+          <p id="training-editor-subtitle">Erstellen Sie eine neue Trainingseinheit</p>
+        </div>
+
+        <form id="training-create-form" class="training-editor">
+          <section class="editor-card">
+            <h3 class="editor-card__title">Grundinformationen</h3>
+
+            <div class="form-grid form-grid--2">
+              <label class="field">
+                <span class="field__label">Name des Trainings</span>
+                <input class="field__control" type="text" name="title" placeholder="z.B. Passspiel & Ballkontrolle" required />
+              </label>
+
+              <label class="field">
+                <span class="field__label">Datum</span>
+                <input class="field__control" type="date" name="session_date" required />
+              </label>
+
+              <label class="field">
+                <span class="field__label">Anzahl Spieler</span>
+                <input class="field__control" type="number" name="required_players" min="3" max="20" placeholder="z.B. 16" required />
+              </label>
+
+              <label class="field">
+                <span class="field__label">Altersgruppe</span>
+                <select id="training-age-group" class="field__control" name="age_group" required>
+                  <option value="">Altersgruppe auswählen</option>
+                </select>
+              </label>
+
+              <label class="field">
+                <span class="field__label">Dauer</span>
+                <input class="field__control" type="number" name="duration" min="1" placeholder="z.B. 90" required />
+              </label>
+
+              <label class="checkbox-field">
+                <input type="checkbox" name="is_template" />
+                <span>Als Mustertraining speichern</span>
+              </label>
+            </div>
+          </section>
+
+          <section class="editor-card">
+            <h3 class="editor-card__title">Aufwärmen</h3>
+
+            <div class="form-grid form-grid--2">
+              <label class="field">
+                <span class="field__label">Übung</span>
+                <input class="field__control" type="text" name="warmup_name" placeholder="Name der Aufwärmübung" />
+              </label>
+
+              <label class="field">
+                <span class="field__label">Dauer</span>
+                <input class="field__control" type="text" name="warmup_duration" placeholder="z.B. 15 min" />
+              </label>
+            </div>
+
+            <label class="field">
+              <span class="field__label">Beschreibung</span>
+              <textarea class="field__control field__control--textarea" name="warmup_description" placeholder="Beschreiben Sie die Aufwärmübung..."></textarea>
+            </label>
+
+            <div class="field">
+              <span class="field__label">Bild zur Aufwärmübung hochladen</span>
+              <input id="warmup-image-input" class="visually-hidden" type="file" accept=".png,.jpg,.jpeg" />
+              <button id="warmup-upload-box" class="upload-box" type="button">
+                <span class="upload-box__icon">⇪</span>
+                <span id="warmup-upload-title" class="upload-box__title">Bild hochladen</span>
+                <span id="warmup-upload-subtitle" class="upload-box__subtitle">PNG oder JPG bis 5MB</span>
+              </button>
+            </div>
+          </section>
+
+          <div id="exercise-blocks" class="exercise-blocks"></div>
+
+          <button id="add-exercise-btn" class="btn btn--outline-primary add-exercise-btn" type="button">
+            + Weitere Übung hinzufügen
+          </button>
+
+          <section class="editor-card">
+            <h3 class="editor-card__title">Skizze / Bild</h3>
+
+            <div class="field">
+              <input id="sketch-input" class="visually-hidden" type="file" accept=".png,.jpg,.jpeg,.pdf" />
+              <button id="sketch-upload-box" class="upload-box upload-box--large" type="button">
+                <span class="upload-box__icon">⇪</span>
+                <span id="sketch-upload-title" class="upload-box__title">Datei hier ablegen oder klicken zum Hochladen</span>
+                <span id="sketch-upload-subtitle" class="upload-box__subtitle">PNG, JPG oder PDF bis 5MB</span>
+              </button>
+            </div>
+          </section>
+
+          <section class="editor-card">
+            <h3 class="editor-card__title">Notizen</h3>
+
+            <label class="field">
+              <textarea class="field__control field__control--textarea field__control--notes" name="notes" placeholder="Zusätzliche Notizen oder Bemerkungen..."></textarea>
+            </label>
+          </section>
+
+          <div class="editor-actions">
+            <button id="training-submit-btn" class="btn btn--primary btn--large" type="submit">Speichern</button>
+            <button id="cancel-training-btn" class="btn btn--secondary btn--large" type="button">Abbrechen</button>
+          </div>
+        </form>
+      </section>
+
+      <section id="profile-view" class="view-section">
+        <div class="page-header">
+          <h2>Profil</h2>
+          <p>Kontodaten verwalten</p>
+        </div>
+
+        <section class="card profile-card">
+          <div class="section-heading">
+            <span class="section-heading__icon">◌</span>
+            <h3>Kontoeinstellungen</h3>
+          </div>
+
+          <div class="profile-card__row">
+            <div>
+              <strong>Aktuelle Rolle</strong>
+              <p id="profile-role-display">—</p>
+            </div>
+            <div>
+              <strong>Verein</strong>
+              <p id="profile-club-display">—</p>
+            </div>
+            <div>
+              <strong>Aktueller Benutzername</strong>
+              <p id="profile-username-display">—</p>
+            </div>
+          </div>
+
+          <div class="account-actions-grid">
+            <article class="account-action-card">
+              <h3 class="account-action-card__title">Benutzername ändern</h3>
+              <p class="account-action-card__copy">Öffnet eine eigene Oberfläche zum Ändern des Benutzernamens.</p>
+              <button id="open-username-edit-btn" class="btn btn--primary" type="button">Benutzername ändern</button>
+            </article>
+
+            <article class="account-action-card">
+              <h3 class="account-action-card__title">Passwort ändern</h3>
+              <p class="account-action-card__copy">Öffnet eine eigene Oberfläche zum Ändern des Passworts.</p>
+              <button id="open-password-edit-btn" class="btn btn--primary" type="button">Passwort ändern</button>
+            </article>
+          </div>
+        </section>
+
+        <section class="card settings-card">
+          <div class="section-heading">
+            <span class="section-heading__icon">⚙</span>
+            <h3>Temporäre Rollenumschaltung</h3>
+          </div>
+
+          <p class="admin-card__copy">
+            Nur für Entwicklung/Test: Hier können Sie sich vorübergehend selbst eine Rolle zuweisen.
+          </p>
+
+          <form id="dev-role-form" class="settings-form">
+            <label class="field">
+              <span class="field__label">Rolle auswählen</span>
+              <select id="profile-role-select" class="field__control" name="role" required>
+                <option value="spieler">Spieler</option>
+                <option value="trainer">Trainer</option>
+                <option value="admin">Admin</option>
+              </select>
+            </label>
+
+            <div class="editor-actions editor-actions--profile">
+              <button class="btn btn--primary" type="submit">Rolle übernehmen</button>
+            </div>
+          </form>
+        </section>
+
+        <section id="admin-user-section" class="card admin-card is-hidden">
+          <div class="section-heading">
+            <span class="section-heading__icon">⚙</span>
+            <h3>Benutzer durch Admin anlegen</h3>
+          </div>
+
+          <p class="admin-card__copy">
+            Nur Admins können höhere Rollen wie <strong>Trainer</strong> oder <strong>Admin</strong> vergeben.
+          </p>
+
+          <form id="admin-create-user-form" class="filters-grid admin-form">
+            <label class="field">
+              <span class="field__label">Benutzername</span>
+              <input class="field__control" type="text" name="username" required />
+            </label>
+
+            <label class="field">
+              <span class="field__label">Verein</span>
+              <input class="field__control" type="text" name="club" value="TSV Ottensheim" required />
+            </label>
+
+            <label class="field">
+              <span class="field__label">Rolle</span>
+              <select class="field__control" name="role" required>
+                <option value="spieler">Spieler</option>
+                <option value="trainer">Trainer</option>
+                <option value="admin">Admin</option>
+              </select>
+            </label>
+
+            <label class="field">
+              <span class="field__label">Initiales Passwort</span>
+              <input class="field__control" type="password" name="password" required />
+            </label>
+
+            <div class="admin-form__actions">
+              <button class="btn btn--primary" type="submit">Benutzer anlegen</button>
+            </div>
+          </form>
+        </section>
+      </section>
+
+      <section id="username-edit-view" class="view-section">
+        <button id="back-to-profile-from-username-btn" class="link-back" type="button">← Zurück zum Profil</button>
+
+        <div class="page-header">
+          <h2>Benutzername ändern</h2>
+          <p>Bearbeiten Sie Ihren aktuellen Benutzernamen in einer eigenen Oberfläche.</p>
+        </div>
+
+        <section class="card settings-card">
+          <form id="username-edit-form" class="settings-form">
+            <label class="field">
+              <span class="field__label">Neuer Benutzername</span>
+              <input id="username-edit-input" class="field__control" type="text" required />
+            </label>
+
+            <div class="editor-actions editor-actions--profile">
+              <button class="btn btn--primary" type="submit">Benutzername speichern</button>
+              <button id="cancel-username-edit-btn" class="btn btn--secondary" type="button">Abbrechen</button>
+            </div>
+          </form>
+        </section>
+      </section>
+
+      <section id="password-edit-view" class="view-section">
+        <button id="back-to-profile-from-password-btn" class="link-back" type="button">← Zurück zum Profil</button>
+
+        <div class="page-header">
+          <h2>Passwort ändern</h2>
+          <p>Ändern Sie Ihr Passwort in einer eigenen Oberfläche.</p>
+        </div>
+
+        <section class="card settings-card">
+          <form id="password-edit-form" class="settings-form">
+            <label class="field">
+              <span class="field__label">Aktuelles Passwort</span>
+              <input id="current-password-input" class="field__control" type="password" placeholder="Aktuelles Passwort eingeben" />
+            </label>
+
+            <label class="field">
+              <span class="field__label">Neues Passwort</span>
+              <input id="new-password-input" class="field__control" type="password" placeholder="Neues Passwort eingeben" required />
+            </label>
+
+            <label class="field">
+              <span class="field__label">Neues Passwort wiederholen</span>
+              <input id="repeat-password-input" class="field__control" type="password" placeholder="Neues Passwort wiederholen" required />
+            </label>
+
+            <div class="editor-actions editor-actions--profile">
+              <button class="btn btn--primary" type="submit">Passwort speichern</button>
+              <button id="cancel-password-edit-btn" class="btn btn--secondary" type="button">Abbrechen</button>
+            </div>
+          </form>
+        </section>
+      </section>
+    </main>
+  </div>
+</div>
+
+<script type="module" src="./main.js"></script>
 </body>
 </html>
