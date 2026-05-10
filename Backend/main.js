@@ -1,4 +1,4 @@
-import { fetchTrainingEntries, createTraining, updateTraining } from "./trainingsService.js";
+import { fetchTrainingEntries, createTraining, updateTraining, deleteTraining } from "./trainingsService.js";
 import { fetchUsers, createUser, updateUserProfile } from "./usersService.js";
 
 const STORAGE_KEY = "coachboardCurrentUserId";
@@ -9,6 +9,8 @@ const state = {
   users: [],
   currentUser: null,
   filteredTrainings: [],
+  exerciseEntries: [],
+  filteredExerciseEntries: [],
   currentPage: 1,
   itemsPerPage: 8,
   selectedTrainingId: null,
@@ -18,6 +20,11 @@ const state = {
   filters: {
     age: "",
     date: "",
+    players: "",
+    topic: ""
+  },
+  exerciseFilters: {
+    type: "",
     players: "",
     topic: ""
   }
@@ -38,6 +45,7 @@ const pageTitle = document.getElementById("page-title");
 const pageSubtitle = document.getElementById("page-subtitle");
 
 const listingView = document.getElementById("listing-view");
+const exercisesView = document.getElementById("exercises-view");
 const trainingDetailView = document.getElementById("training-detail-view");
 const trainingCreateView = document.getElementById("training-create-view");
 const profileView = document.getElementById("profile-view");
@@ -48,6 +56,10 @@ const statsGrid = document.getElementById("stats-grid");
 const trainingsTableWrap = document.getElementById("trainings-table-wrap");
 const pagination = document.getElementById("pagination");
 
+const exercisesStatsGrid = document.getElementById("exercises-stats-grid");
+const exercisesTableWrap = document.getElementById("exercises-table-wrap");
+const exercisesPagination = document.getElementById("exercises-pagination");
+
 const trainingDetailTitle = document.getElementById("training-detail-title");
 const trainingDetailSubtitle = document.getElementById("training-detail-subtitle");
 const trainingDetailMeta = document.getElementById("training-detail-meta");
@@ -56,12 +68,19 @@ const trainingDetailExercises = document.getElementById("training-detail-exercis
 const trainingDetailSketch = document.getElementById("training-detail-sketch");
 const trainingDetailNotes = document.getElementById("training-detail-notes");
 const backFromDetailBtn = document.getElementById("back-from-detail-btn");
+const detailDeleteBtn = document.getElementById("detail-delete-btn");
 const detailEditBtn = document.getElementById("detail-edit-btn");
 
 const filterAge = document.getElementById("filter-age");
 const filterDate = document.getElementById("filter-date");
 const filterPlayers = document.getElementById("filter-players");
 const filterTopic = document.getElementById("filter-topic");
+
+const exerciseFilterType = document.getElementById("exercise-filter-type");
+const exerciseFilterPlayers = document.getElementById("exercise-filter-players");
+const exerciseFilterTopic = document.getElementById("exercise-filter-topic");
+const applyExerciseFiltersBtn = document.getElementById("apply-exercise-filters-btn");
+const resetExerciseFiltersBtn = document.getElementById("reset-exercise-filters-btn");
 
 const trainingAgeGroup = document.getElementById("training-age-group");
 const trainingCreateForm = document.getElementById("training-create-form");
@@ -73,6 +92,18 @@ const cancelTrainingBtn = document.getElementById("cancel-training-btn");
 const trainingEditorTitle = document.getElementById("training-editor-title");
 const trainingEditorSubtitle = document.getElementById("training-editor-subtitle");
 const trainingSubmitBtn = document.getElementById("training-submit-btn");
+
+const openWarmupLibraryBtn = document.getElementById("open-warmup-library-btn");
+const warmupLibraryPanel = document.getElementById("warmup-library-panel");
+const closeWarmupLibraryBtn = document.getElementById("close-warmup-library-btn");
+const warmupLibrarySearch = document.getElementById("warmup-library-search");
+const warmupLibraryResults = document.getElementById("warmup-library-results");
+
+const openExerciseLibraryBtn = document.getElementById("open-exercise-library-btn");
+const exerciseLibraryPanel = document.getElementById("exercise-library-panel");
+const closeExerciseLibraryBtn = document.getElementById("close-exercise-library-btn");
+const exerciseLibrarySearch = document.getElementById("exercise-library-search");
+const exerciseLibraryResults = document.getElementById("exercise-library-results");
 
 const warmupImageInput = document.getElementById("warmup-image-input");
 const warmupUploadBox = document.getElementById("warmup-upload-box");
@@ -235,6 +266,31 @@ function getAgeGroups() {
   ];
 }
 
+function hasWarmupContent(warmup) {
+  return Boolean(
+      warmup &&
+      (warmup.name || warmup.duration || warmup.description || warmup.image_name || warmup.image_preview_url)
+  );
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    if (!file) {
+      resolve("");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
+    reader.onerror = () => reject(new Error("Datei konnte nicht gelesen werden."));
+    reader.readAsDataURL(file);
+  });
+}
+
+function isImageDataUrl(value) {
+  return typeof value === "string" && value.startsWith("data:image/");
+}
+
 function setAuthTab(tabName) {
   authTabButtons.forEach((button) => {
     button.classList.toggle("is-active", button.dataset.authTab === tabName);
@@ -364,10 +420,8 @@ function populateTrainingAgeGroupSelect() {
   });
 }
 
-function populatePlayersFilter() {
-  const currentValue = state.filters.players;
-
-  filterPlayers.innerHTML = `<option value="">Beliebig</option>`;
+function fillPlayersSelect(selectElement, currentValue = "") {
+  selectElement.innerHTML = `<option value="">Beliebig</option>`;
 
   for (let players = 3; players <= 20; players += 1) {
     const option = document.createElement("option");
@@ -378,8 +432,16 @@ function populatePlayersFilter() {
       option.selected = true;
     }
 
-    filterPlayers.appendChild(option);
+    selectElement.appendChild(option);
   }
+}
+
+function populatePlayersFilter() {
+  fillPlayersSelect(filterPlayers, state.filters.players);
+}
+
+function populateExercisePlayersFilter() {
+  fillPlayersSelect(exerciseFilterPlayers, state.exerciseFilters.players);
 }
 
 function getCurrentBaseList() {
@@ -439,6 +501,135 @@ function applyFiltersToList(list) {
   });
 }
 
+function buildExerciseEntries() {
+  const entries = [];
+
+  state.trainings.forEach((training) => {
+    if (hasWarmupContent(training.warmup)) {
+      entries.push({
+        id: `${training.id}__warmup`,
+        trainingId: training.id,
+        trainingTitle: training.title,
+        type: "warmup",
+        typeLabel: "Aufwärmen",
+        title: training.warmup.name || "Aufwärmen",
+        duration: training.warmup.duration || "",
+        description: training.warmup.description || "",
+        material: "",
+        image_name: training.warmup.image_name || "",
+        image_preview_url: training.warmup.image_preview_url || "",
+        sketch_file_name: "",
+        sketch_preview_url: "",
+        required_players: training.required_players || 0,
+        age_group: training.age_group || "—",
+        dateLabel: training.dateLabel,
+        dateValue: training.dateValue,
+        sortDate: training.dateValue || training.session_date || training.created_at || "",
+        trainingIsTemplate: Boolean(training.is_template)
+      });
+    }
+
+    if (Array.isArray(training.exercises)) {
+      training.exercises.forEach((exercise, index) => {
+        const hasContent = Boolean(
+            exercise &&
+            (
+                exercise.name ||
+                exercise.duration ||
+                exercise.description ||
+                exercise.material ||
+                exercise.sketch_file_name ||
+                exercise.sketch_preview_url
+            )
+        );
+
+        if (!hasContent) return;
+
+        entries.push({
+          id: `${training.id}__exercise_${index}`,
+          trainingId: training.id,
+          trainingTitle: training.title,
+          type: "exercise",
+          typeLabel: "Übung",
+          title: exercise.name || `Übung ${index + 1}`,
+          duration: exercise.duration || "",
+          description: exercise.description || "",
+          material: exercise.material || "",
+          image_name: "",
+          image_preview_url: "",
+          sketch_file_name: exercise.sketch_file_name || "",
+          sketch_preview_url: exercise.sketch_preview_url || "",
+          required_players: training.required_players || 0,
+          age_group: training.age_group || "—",
+          dateLabel: training.dateLabel,
+          dateValue: training.dateValue,
+          sortDate: training.dateValue || training.session_date || training.created_at || "",
+          trainingIsTemplate: Boolean(training.is_template)
+        });
+      });
+    }
+  });
+
+  return entries.sort((a, b) => {
+    const dateA = new Date(a.sortDate).getTime() || 0;
+    const dateB = new Date(b.sortDate).getTime() || 0;
+    return dateB - dateA;
+  });
+}
+
+function applyExerciseFiltersToList(list) {
+  return list.filter((entry) => {
+    if (state.exerciseFilters.type && entry.type !== state.exerciseFilters.type) {
+      return false;
+    }
+
+    if (state.exerciseFilters.players) {
+      const selectedPlayers = Number(state.exerciseFilters.players);
+      if (Number(entry.required_players || 0) !== selectedPlayers) {
+        return false;
+      }
+    }
+
+    if (state.exerciseFilters.topic) {
+      const haystack = [
+        entry.title,
+        entry.description,
+        entry.material,
+        entry.trainingTitle,
+        entry.age_group,
+        entry.typeLabel
+      ].join(" ").toLowerCase();
+
+      if (!haystack.includes(state.exerciseFilters.topic.toLowerCase())) {
+        return false;
+      }
+    }
+
+    return true;
+  });
+}
+
+function filterLibraryEntries(type, searchTerm) {
+  const term = String(searchTerm || "").trim().toLowerCase();
+
+  return state.exerciseEntries.filter((entry) => {
+    if (entry.type !== type) return false;
+
+    if (!term) return true;
+
+    const haystack = [
+      entry.title,
+      entry.description,
+      entry.material,
+      entry.trainingTitle,
+      entry.age_group,
+      entry.typeLabel
+    ].join(" ").toLowerCase();
+
+    return haystack.includes(term);
+  });
+}
+
 function renderStats() {
   const total = state.trainings.length;
   const templates = state.trainings.filter((training) => training.is_template).length;
@@ -458,6 +649,27 @@ function renderStats() {
     <div class="stat-item">
       <span class="stat-item__label">Meine Trainings</span>
       <span class="stat-item__value">${mine}</span>
+    </div>
+  `;
+}
+
+function renderExerciseStats() {
+  const total = state.exerciseEntries.length;
+  const warmups = state.exerciseEntries.filter((entry) => entry.type === "warmup").length;
+  const exercises = state.exerciseEntries.filter((entry) => entry.type === "exercise").length;
+
+  exercisesStatsGrid.innerHTML = `
+    <div class="stat-item">
+      <span class="stat-item__label">Gesamt Exercises</span>
+      <span class="stat-item__value">${total}</span>
+    </div>
+    <div class="stat-item">
+      <span class="stat-item__label">Aufwärmen</span>
+      <span class="stat-item__value">${warmups}</span>
+    </div>
+    <div class="stat-item">
+      <span class="stat-item__label">Übungen</span>
+      <span class="stat-item__value">${exercises}</span>
     </div>
   `;
 }
@@ -484,9 +696,7 @@ function canEditTraining(training, sourceView) {
 
 function openTrainingDetail(trainingId, sourceView = state.activeView) {
   state.selectedTrainingId = trainingId;
-  state.detailSourceView = ["library", "my-trainings", "template-trainings"].includes(sourceView)
-      ? sourceView
-      : "library";
+  state.detailSourceView = sourceView;
   state.activeView = "training-detail";
   render();
 }
@@ -500,13 +710,66 @@ function createDetailMetaItem(label, value) {
   `;
 }
 
+function createMediaPlaceholder(text) {
+  return `<div class="detail-media-placeholder">${text}</div>`;
+}
+
+function createWarmupImageMarkup(warmup) {
+  if (isImageDataUrl(warmup.image_preview_url)) {
+    return `
+      <div class="detail-image-frame">
+        <img
+          class="detail-image"
+          src="${warmup.image_preview_url}"
+          alt="${warmup.name ? `Bild zu ${warmup.name}` : "Aufwärmbild"}"
+        />
+        <div class="detail-image-caption">
+          ${warmup.image_name || "Bildvorschau"}
+        </div>
+      </div>
+    `;
+  }
+
+  if (warmup.image_name) {
+    return createMediaPlaceholder(warmup.image_name);
+  }
+
+  return createMediaPlaceholder("Kein Bild hinterlegt");
+}
+
+function createExerciseImageMarkup(exercise) {
+  if (isImageDataUrl(exercise.sketch_preview_url)) {
+    return `
+      <div class="detail-image-frame">
+        <img
+          class="detail-image"
+          src="${exercise.sketch_preview_url}"
+          alt="${exercise.name ? `Skizze zu ${exercise.name}` : "Übungsskizze"}"
+        />
+        <div class="detail-image-caption">
+          ${exercise.sketch_file_name || "Bildvorschau"}
+        </div>
+      </div>
+    `;
+  }
+
+  if (exercise.sketch_file_name) {
+    return createMediaPlaceholder(exercise.sketch_file_name);
+  }
+
+  return createMediaPlaceholder("Keine Skizze hinterlegt");
+}
+
 function renderTrainingDetail() {
   const training = getSelectedTraining();
   const editable = canEditTraining(training, state.detailSourceView);
+  const isAdmin = state.currentUser && normalizeRole(state.currentUser.role) === "admin";
 
   detailEditBtn.classList.toggle("is-hidden", !editable);
+  detailDeleteBtn.classList.toggle("is-hidden", !(isAdmin && training));
 
   if (!training) {
+    detailDeleteBtn.classList.add("is-hidden");
     trainingDetailTitle.textContent = "Training nicht gefunden";
     trainingDetailSubtitle.textContent = "Die ausgewählte Trainingseinheit konnte nicht geladen werden.";
     trainingDetailMeta.innerHTML = `<div class="detail-empty">Kein Training gefunden.</div>`;
@@ -537,23 +800,27 @@ function renderTrainingDetail() {
   ].join("");
 
   const warmup = training.warmup;
-  if (warmup && (warmup.name || warmup.duration || warmup.description || warmup.image_name)) {
+  if (warmup && (warmup.name || warmup.duration || warmup.description || warmup.image_name || warmup.image_preview_url)) {
     trainingDetailWarmup.innerHTML = `
       <div class="detail-card">
         <h4 class="detail-card__title">${warmup.name || "Aufwärmübung"}</h4>
-        <div class="detail-inline-grid detail-inline-grid--2">
-          <div>
-            <span class="detail-meta-item__label">Dauer</span>
-            <div class="detail-meta-item__value">${warmup.duration || "—"}</div>
+        <div class="detail-split">
+          <div class="detail-split__content">
+            <div class="detail-inline-grid detail-inline-grid--2">
+              <div>
+                <span class="detail-meta-item__label">Dauer</span>
+                <div class="detail-meta-item__value">${warmup.duration || "—"}</div>
+              </div>
+            </div>
+            <div>
+              <span class="detail-meta-item__label">Beschreibung</span>
+              <p class="detail-text">${warmup.description || "Keine Beschreibung vorhanden."}</p>
+            </div>
           </div>
-          <div>
+          <div class="detail-split__media">
             <span class="detail-meta-item__label">Bild</span>
-            <div class="detail-meta-item__value">${warmup.image_name || "Kein Bild hinterlegt"}</div>
+            ${createWarmupImageMarkup(warmup)}
           </div>
-        </div>
-        <div style="margin-top: 14px;">
-          <span class="detail-meta-item__label">Beschreibung</span>
-          <p class="detail-text">${warmup.description || "Keine Beschreibung vorhanden."}</p>
         </div>
       </div>
     `;
@@ -567,30 +834,27 @@ function renderTrainingDetail() {
         ${training.exercises.map((exercise, index) => `
           <div class="detail-card">
             <h4 class="detail-card__title">Übung ${index + 1}${exercise.name ? ` – ${exercise.name}` : ""}</h4>
-
-            <div class="detail-inline-grid detail-inline-grid--2">
-              <div>
-                <span class="detail-meta-item__label">Dauer</span>
-                <div class="detail-meta-item__value">${exercise.duration || "—"}</div>
+            <div class="detail-split">
+              <div class="detail-split__content">
+                <div class="detail-inline-grid detail-inline-grid--2">
+                  <div>
+                    <span class="detail-meta-item__label">Dauer</span>
+                    <div class="detail-meta-item__value">${exercise.duration || "—"}</div>
+                  </div>
+                  <div>
+                    <span class="detail-meta-item__label">Material</span>
+                    <div class="detail-meta-item__value">${exercise.material || "—"}</div>
+                  </div>
+                </div>
+                <div>
+                  <span class="detail-meta-item__label">Beschreibung</span>
+                  <p class="detail-text">${exercise.description || "Keine Beschreibung vorhanden."}</p>
+                </div>
               </div>
-              <div>
-                <span class="detail-meta-item__label">Material</span>
-                <div class="detail-meta-item__value">${exercise.material || "—"}</div>
+              <div class="detail-split__media">
+                <span class="detail-meta-item__label">Skizze / Bild</span>
+                ${createExerciseImageMarkup(exercise)}
               </div>
-            </div>
-
-"}</div>
-              </div>
-            </div>
-
-            <div style="margin-top: 14px;">
-              <span class="detail-meta-item__label">Beschreibung</span>
-              <p class="detail-text">${exercise.description || "Keine Beschreibung vorhanden."}</p>
-            </div>
-
-            <div style="margin-top: 14px;">
-              <span class="detail-meta-item__label">Skizze / Bild</span>
-              <div class="detail-meta-item__value">${exercise.sketch_file_name || "Keine Skizze hinterlegt"}</div>
             </div>
           </div>
         `).join("")}
@@ -602,12 +866,36 @@ function renderTrainingDetail() {
 
   if (training.sketch_file_name) {
     trainingDetailSketch.innerHTML = `
-      <div class="detail-file-box">
-        Hinterlegte Datei: <strong>${training.sketch_file_name}</strong>
+      <div class="detail-sketch-stack">
+        <div class="detail-file-box">
+          Hinterlegte Datei: <strong>${training.sketch_file_name}</strong>
+        </div>
+
+        <a
+          href="https://ft-graphics.fussballtraining.com/"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="btn btn--outline-primary detail-sketch-link"
+        >
+          Zeichenprogramm
+        </a>
       </div>
     `;
   } else {
-    trainingDetailSketch.innerHTML = `<div class="detail-empty">Keine Skizze oder Datei hinterlegt.</div>`;
+    trainingDetailSketch.innerHTML = `
+      <div class="detail-sketch-stack">
+        <div class="detail-empty">Keine Skizze oder Datei hinterlegt.</div>
+
+        <a
+          href="https://ft-graphics.fussballtraining.com/"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="btn btn--outline-primary detail-sketch-link"
+        >
+          Zeichenprogramm
+        </a>
+      </div>
+    `;
   }
 
   trainingDetailNotes.innerHTML = training.notes
@@ -633,7 +921,7 @@ function renderTable() {
     return `
       <tr class="training-table__row--clickable" tabindex="0" data-training-id="${training.id}">
         <td>
-          <button class="training-name training-name--button" type="button" data-open-training="${training.id}">
+          <button class="training-name training-name--button" type="button">
             ${training.title}
           </button>
         </td>
@@ -722,6 +1010,215 @@ function renderPagination(totalPages) {
   });
 }
 
+function renderExercisesTable() {
+  const totalItems = state.filteredExerciseEntries.length;
+  const totalPages = Math.max(1, Math.ceil(totalItems / state.itemsPerPage));
+  state.currentPage = Math.min(state.currentPage, totalPages);
+
+  const start = (state.currentPage - 1) * state.itemsPerPage;
+  const visibleItems = state.filteredExerciseEntries.slice(start, start + state.itemsPerPage);
+
+  if (visibleItems.length === 0) {
+    exercisesTableWrap.innerHTML = `<div class="empty-state">Keine Exercises für die aktuelle Filterung gefunden.</div>`;
+    exercisesPagination.innerHTML = "";
+    return;
+  }
+
+  const rows = visibleItems.map((entry) => {
+    const typeBadgeClass = entry.type === "warmup" ? "detail-pill--warmup" : "detail-pill--exercise";
+
+    return `
+      <tr class="training-table__row--clickable" tabindex="0" data-exercise-training-id="${entry.trainingId}">
+        <td>
+          <button class="training-name training-name--button" type="button">
+            ${entry.title}
+          </button>
+        </td>
+        <td><span class="detail-pill ${typeBadgeClass}">${entry.typeLabel}</span></td>
+        <td>${entry.trainingTitle}</td>
+        <td>${entry.required_players || "—"}</td>
+        <td><span class="category-pill">${entry.age_group}</span></td>
+        <td>${entry.dateLabel}</td>
+      </tr>
+    `;
+  }).join("");
+
+  exercisesTableWrap.innerHTML = `
+    <table class="training-table">
+      <thead>
+        <tr>
+          <th>Exercise</th>
+          <th>Typ</th>
+          <th>Training</th>
+          <th>Spieler</th>
+          <th>Kategorie</th>
+          <th>Datum</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows}
+      </tbody>
+    </table>
+  `;
+
+  exercisesTableWrap.querySelectorAll("[data-exercise-training-id]").forEach((row) => {
+    row.addEventListener("click", () => {
+      openTrainingDetail(row.dataset.exerciseTrainingId, "exercises");
+    });
+
+    row.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        openTrainingDetail(row.dataset.exerciseTrainingId, "exercises");
+      }
+    });
+  });
+
+  renderExercisesPagination(totalPages);
+}
+
+function renderExercisesPagination(totalPages) {
+  if (totalPages <= 1) {
+    exercisesPagination.innerHTML = "";
+    return;
+  }
+
+  const buttons = [];
+
+  buttons.push(`
+    <button class="pagination__btn ${state.currentPage === 1 ? "is-disabled" : ""}" data-exercise-page="${state.currentPage - 1}">
+      Zurück
+    </button>
+  `);
+
+  for (let page = 1; page <= totalPages; page += 1) {
+    buttons.push(`
+      <button class="pagination__btn ${page === state.currentPage ? "is-active" : ""}" data-exercise-page="${page}">
+        ${page}
+      </button>
+    `);
+  }
+
+  buttons.push(`
+    <button class="pagination__btn ${state.currentPage === totalPages ? "is-disabled" : ""}" data-exercise-page="${state.currentPage + 1}">
+      Weiter
+    </button>
+  `);
+
+  exercisesPagination.innerHTML = buttons.join("");
+
+  exercisesPagination.querySelectorAll("[data-exercise-page]").forEach((button) => {
+    if (button.classList.contains("is-disabled")) return;
+
+    button.addEventListener("click", () => {
+      state.currentPage = Number(button.dataset.exercisePage);
+      renderExercisesTable();
+    });
+  });
+}
+
+function renderLibraryResults(container, entries, mode) {
+  if (entries.length === 0) {
+    container.innerHTML = `<div class="library-picker__empty">Keine passenden Einträge gefunden.</div>`;
+    return;
+  }
+
+  container.innerHTML = entries.map((entry) => {
+    const typeBadgeClass = entry.type === "warmup" ? "detail-pill--warmup" : "detail-pill--exercise";
+    const description = entry.description || "Keine Beschreibung vorhanden.";
+
+    return `
+      <div class="library-picker__item">
+        <div class="library-picker__meta">
+          <div class="library-picker__title">${entry.title}</div>
+          <div class="library-picker__subline">
+            <span class="detail-pill ${typeBadgeClass}">${entry.typeLabel}</span>
+            &nbsp;•&nbsp; ${entry.trainingTitle}
+            &nbsp;•&nbsp; ${entry.age_group}
+            &nbsp;•&nbsp; ${entry.required_players || "—"} Spieler
+          </div>
+          <div class="library-picker__copy">${description}</div>
+        </div>
+        <button class="btn btn--primary" type="button" data-library-select="${mode}" data-library-id="${entry.id}">
+          Einfügen
+        </button>
+      </div>
+    `;
+  }).join("");
+}
+
+function renderWarmupLibrary() {
+  const entries = filterLibraryEntries("warmup", warmupLibrarySearch.value);
+  renderLibraryResults(warmupLibraryResults, entries, "warmup");
+}
+
+function renderExerciseLibrary() {
+  const entries = filterLibraryEntries("exercise", exerciseLibrarySearch.value);
+  renderLibraryResults(exerciseLibraryResults, entries, "exercise");
+}
+
+function openWarmupLibrary() {
+  warmupLibraryPanel.classList.remove("is-hidden");
+  renderWarmupLibrary();
+}
+
+function closeWarmupLibrary() {
+  warmupLibraryPanel.classList.add("is-hidden");
+}
+
+function openExerciseLibrary() {
+  exerciseLibraryPanel.classList.remove("is-hidden");
+  renderExerciseLibrary();
+}
+
+function closeExerciseLibrary() {
+  exerciseLibraryPanel.classList.add("is-hidden");
+}
+
+function resetLibraryPickers() {
+  warmupLibrarySearch.value = "";
+  exerciseLibrarySearch.value = "";
+  closeWarmupLibrary();
+  closeExerciseLibrary();
+  warmupLibraryResults.innerHTML = "";
+  exerciseLibraryResults.innerHTML = "";
+}
+
+function findLibraryEntryById(entryId, type) {
+  return state.exerciseEntries.find((entry) => entry.id === entryId && entry.type === type) || null;
+}
+
+function useWarmupLibraryEntry(entry) {
+  trainingCreateForm.elements.warmup_name.value = entry.title || "";
+  trainingCreateForm.elements.warmup_duration.value = entry.duration || "";
+  trainingCreateForm.elements.warmup_description.value = entry.description || "";
+
+  setUploadBoxExistingFile(
+      warmupUploadBox,
+      warmupUploadTitle,
+      warmupUploadSubtitle,
+      entry.image_name || "",
+      "Bild hochladen",
+      "PNG oder JPG bis 5MB",
+      entry.image_preview_url || ""
+  );
+
+  closeWarmupLibrary();
+}
+
+function useExerciseLibraryEntry(entry) {
+  createExerciseBlock({
+    name: entry.title || "",
+    duration: entry.duration || "",
+    description: entry.description || "",
+    material: entry.material || "",
+    sketch_file_name: entry.sketch_file_name || "",
+    sketch_preview_url: entry.sketch_preview_url || ""
+  });
+
+  closeExerciseLibrary();
+}
+
 function updatePageHeader() {
   if (state.activeView === "library") {
     pageTitle.textContent = "Bibliothek";
@@ -745,6 +1242,7 @@ function renderViews() {
   const isListing = ["library", "my-trainings", "template-trainings"].includes(state.activeView);
 
   listingView.classList.toggle("is-active", isListing);
+  exercisesView.classList.toggle("is-active", state.activeView === "exercises");
   trainingDetailView.classList.toggle("is-active", state.activeView === "training-detail");
   trainingCreateView.classList.toggle("is-active", state.activeView === "training-create");
   profileView.classList.toggle("is-active", state.activeView === "profile");
@@ -786,6 +1284,12 @@ function renderListing() {
   renderTable();
 }
 
+function renderExercisesView() {
+  state.filteredExerciseEntries = applyExerciseFiltersToList(state.exerciseEntries);
+  renderExerciseStats();
+  renderExercisesTable();
+}
+
 function render() {
   updatePageHeader();
   renderViews();
@@ -796,8 +1300,17 @@ function render() {
     renderListing();
   }
 
+  if (state.activeView === "exercises") {
+    renderExercisesView();
+  }
+
   if (state.activeView === "training-detail") {
     renderTrainingDetail();
+  }
+
+  if (state.activeView === "training-create") {
+    renderWarmupLibrary();
+    renderExerciseLibrary();
   }
 }
 
@@ -822,14 +1335,41 @@ function resetFilters() {
   filterTopic.value = "";
 }
 
+function readExerciseFiltersFromInputs() {
+  state.exerciseFilters.type = exerciseFilterType.value;
+  state.exerciseFilters.players = exerciseFilterPlayers.value;
+  state.exerciseFilters.topic = exerciseFilterTopic.value.trim();
+}
+
+function resetExerciseFilters() {
+  state.exerciseFilters = {
+    type: "",
+    players: "",
+    topic: ""
+  };
+
+  exerciseFilterType.value = "";
+  exerciseFilterPlayers.value = "";
+  exerciseFilterTopic.value = "";
+}
+
 function resetUploadBox(box, titleEl, subtitleEl, title, subtitle) {
   box.classList.remove("has-file");
   box.dataset.existingFileName = "";
+  box.dataset.existingPreviewUrl = "";
   titleEl.textContent = title;
   subtitleEl.textContent = subtitle;
 }
 
-function setUploadBoxExistingFile(box, titleEl, subtitleEl, fileName, defaultTitle, defaultSubtitle) {
+function setUploadBoxExistingFile(
+    box,
+    titleEl,
+    subtitleEl,
+    fileName,
+    defaultTitle,
+    defaultSubtitle,
+    previewUrl = ""
+) {
   if (!fileName) {
     resetUploadBox(box, titleEl, subtitleEl, defaultTitle, defaultSubtitle);
     return;
@@ -837,6 +1377,7 @@ function setUploadBoxExistingFile(box, titleEl, subtitleEl, fileName, defaultTit
 
   box.classList.add("has-file");
   box.dataset.existingFileName = fileName;
+  box.dataset.existingPreviewUrl = previewUrl || "";
   titleEl.textContent = fileName;
   subtitleEl.textContent = "Bereits hinterlegte Datei";
 }
@@ -851,8 +1392,18 @@ function attachUploadBox(box, input, titleEl, subtitleEl, defaultTitle, defaultS
 
     if (!file) {
       const existingFileName = box.dataset.existingFileName || "";
+      const existingPreviewUrl = box.dataset.existingPreviewUrl || "";
+
       if (existingFileName) {
-        setUploadBoxExistingFile(box, titleEl, subtitleEl, existingFileName, defaultTitle, defaultSubtitle);
+        setUploadBoxExistingFile(
+            box,
+            titleEl,
+            subtitleEl,
+            existingFileName,
+            defaultTitle,
+            defaultSubtitle,
+            existingPreviewUrl
+        );
         return;
       }
 
@@ -862,6 +1413,7 @@ function attachUploadBox(box, input, titleEl, subtitleEl, defaultTitle, defaultS
 
     box.classList.add("has-file");
     box.dataset.existingFileName = file.name;
+    box.dataset.existingPreviewUrl = "";
     titleEl.textContent = file.name;
     subtitleEl.textContent = `Datei ausgewählt • ${(file.size / 1024 / 1024).toFixed(2)} MB`;
   });
@@ -947,7 +1499,8 @@ function createExerciseBlock(exerciseData = null) {
         subtitleEl,
         exerciseData.sketch_file_name || "",
         "Skizze oder Bild hochladen",
-        "PNG, JPG oder PDF bis 5MB"
+        "PNG, JPG oder PDF bis 5MB",
+        exerciseData.sketch_preview_url || ""
     );
   }
 
@@ -976,6 +1529,7 @@ function resetTrainingCreateForm() {
   state.editingTrainingId = null;
   state.editReturnView = "library";
   populateTrainingAgeGroupSelect();
+  resetLibraryPickers();
 
   exerciseBlocks.innerHTML = "";
   createExerciseBlock();
@@ -1021,7 +1575,8 @@ function populateTrainingFormForEdit(training) {
       warmupUploadSubtitle,
       training.warmup?.image_name || "",
       "Bild hochladen",
-      "PNG oder JPG bis 5MB"
+      "PNG oder JPG bis 5MB",
+      training.warmup?.image_preview_url || ""
   );
 
   setUploadBoxExistingFile(
@@ -1045,6 +1600,7 @@ function populateTrainingFormForEdit(training) {
 function openTrainingCreateView() {
   resetTrainingCreateForm();
   state.activeView = "training-create";
+  state.currentPage = 1;
   render();
 }
 
@@ -1053,9 +1609,9 @@ function openTrainingEditView() {
   if (!training) return;
   if (!canEditTraining(training, state.detailSourceView)) return;
 
+  populateTrainingFormForEdit(training);
   state.editingTrainingId = training.id;
   state.editReturnView = state.detailSourceView || "library";
-  populateTrainingFormForEdit(training);
   state.activeView = "training-create";
   render();
 }
@@ -1076,24 +1632,47 @@ function openPasswordEditView() {
   render();
 }
 
-function collectExercisesFromForm() {
+async function collectExercisesFromForm() {
   const blocks = [...exerciseBlocks.querySelectorAll(".exercise-card")];
 
-  return blocks.map((block) => {
-    const sketchInputField = block.querySelector(".exercise-sketch-input");
-    const sketchFile = sketchInputField?.files?.[0] || null;
-    const sketchBox = block.querySelector(".exercise-upload-box");
-    const existingSketchFileName = sketchBox?.dataset.existingFileName || "";
+  const exercises = await Promise.all(
+      blocks.map(async (block) => {
+        const sketchInputField = block.querySelector(".exercise-sketch-input");
+        const sketchFile = sketchInputField?.files?.[0] || null;
+        const sketchBox = block.querySelector(".exercise-upload-box");
+        const existingSketchFileName = sketchBox?.dataset.existingFileName || "";
+        const existingPreviewUrl = sketchBox?.dataset.existingPreviewUrl || "";
 
-    return {
-      name: block.querySelector('[name="exercise_name"]')?.value || "",
-      duration: block.querySelector('[name="exercise_duration"]')?.value || "",
-      description: block.querySelector('[name="exercise_description"]')?.value || "",
-      material: block.querySelector('[name="exercise_material"]')?.value || "",
-      sketch_file_name: sketchFile ? sketchFile.name : existingSketchFileName
-    };
-  }).filter((exercise) => {
-    return exercise.name || exercise.duration || exercise.description || exercise.material || exercise.sketch_file_name;
+        let sketchPreviewUrl = existingPreviewUrl;
+
+        if (sketchFile && sketchFile.type.startsWith("image/")) {
+          sketchPreviewUrl = await readFileAsDataUrl(sketchFile);
+        }
+
+        if (sketchFile && !sketchFile.type.startsWith("image/")) {
+          sketchPreviewUrl = "";
+        }
+
+        return {
+          name: block.querySelector('[name="exercise_name"]')?.value || "",
+          duration: block.querySelector('[name="exercise_duration"]')?.value || "",
+          description: block.querySelector('[name="exercise_description"]')?.value || "",
+          material: block.querySelector('[name="exercise_material"]')?.value || "",
+          sketch_file_name: sketchFile ? sketchFile.name : existingSketchFileName,
+          sketch_preview_url: sketchPreviewUrl
+        };
+      })
+  );
+
+  return exercises.filter((exercise) => {
+    return (
+        exercise.name ||
+        exercise.duration ||
+        exercise.description ||
+        exercise.material ||
+        exercise.sketch_file_name ||
+        exercise.sketch_preview_url
+    );
   });
 }
 
@@ -1106,9 +1685,11 @@ async function loadAll() {
 
     state.trainings = trainingEntries.map(normalizeTraining);
     state.users = userEntries.map(normalizeUser);
+    state.exerciseEntries = buildExerciseEntries();
 
     populateAgeFilter();
     populatePlayersFilter();
+    populateExercisePlayersFilter();
     populateTrainingAgeGroupSelect();
 
     if (state.currentUser) {
@@ -1171,6 +1752,7 @@ function bindEvents() {
     }
 
     state.activeView = "library";
+    state.currentPage = 1;
     loginUsername.value = "";
     loginPassword.value = "";
     setCurrentUser(matchedUser);
@@ -1192,15 +1774,16 @@ function bindEvents() {
     await createUser(null, {
       username,
       club,
-      role: "spieler",
+      role: "trainer",
       password
     });
 
     await loadAll();
 
-    const createdUser = findNewestMatchingUser(username, club, "spieler");
+    const createdUser = findNewestMatchingUser(username, club, "trainer");
     if (createdUser) {
       state.activeView = "library";
+      state.currentPage = 1;
       setCurrentUser(createdUser);
     }
 
@@ -1369,6 +1952,38 @@ function bindEvents() {
     render();
   });
 
+  detailDeleteBtn.addEventListener("click", async () => {
+    if (!state.currentUser || normalizeRole(state.currentUser.role) !== "admin") {
+      alert("Nur Admins dürfen Trainings löschen.");
+      return;
+    }
+
+    const training = getSelectedTraining();
+
+    if (!training) {
+      alert("Kein Training ausgewählt.");
+      return;
+    }
+
+    const confirmed = confirm(`Möchtest du das Training "${training.title}" wirklich löschen?`);
+
+    if (!confirmed) {
+      return;
+    }
+
+    const deleted = await deleteTraining(training.id, null);
+
+    if (!deleted) {
+      return;
+    }
+
+    state.selectedTrainingId = null;
+    state.activeView = state.detailSourceView || "library";
+    state.currentPage = 1;
+
+    await loadAll();
+  });
+
   detailEditBtn.addEventListener("click", () => {
     openTrainingEditView();
   });
@@ -1387,11 +2002,76 @@ function bindEvents() {
     render();
   });
 
+  applyExerciseFiltersBtn.addEventListener("click", () => {
+    readExerciseFiltersFromInputs();
+    state.currentPage = 1;
+    render();
+  });
+
+  resetExerciseFiltersBtn.addEventListener("click", () => {
+    resetExerciseFilters();
+    populateExercisePlayersFilter();
+    state.currentPage = 1;
+    render();
+  });
+
   createTrainingBtn.addEventListener("click", () => {
     openTrainingCreateView();
   });
 
+  openWarmupLibraryBtn.addEventListener("click", () => {
+    openWarmupLibrary();
+  });
+
+  closeWarmupLibraryBtn.addEventListener("click", () => {
+    closeWarmupLibrary();
+  });
+
+  warmupLibrarySearch.addEventListener("input", () => {
+    renderWarmupLibrary();
+  });
+
+  warmupLibraryResults.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) return;
+
+    const button = target.closest('[data-library-select="warmup"]');
+    if (!button) return;
+
+    const entry = findLibraryEntryById(button.dataset.libraryId, "warmup");
+    if (!entry) return;
+
+    useWarmupLibraryEntry(entry);
+  });
+
+  openExerciseLibraryBtn.addEventListener("click", () => {
+    openExerciseLibrary();
+  });
+
+  closeExerciseLibraryBtn.addEventListener("click", () => {
+    closeExerciseLibrary();
+  });
+
+  exerciseLibrarySearch.addEventListener("input", () => {
+    renderExerciseLibrary();
+  });
+
+  exerciseLibraryResults.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) return;
+
+    const button = target.closest('[data-library-select="exercise"]');
+    if (!button) return;
+
+    const entry = findLibraryEntryById(button.dataset.libraryId, "exercise");
+    if (!entry) return;
+
+    useExerciseLibraryEntry(entry);
+  });
+
   backToLibraryBtn.addEventListener("click", () => {
+    resetLibraryPickers();
+
     if (state.editingTrainingId) {
       state.activeView = "training-detail";
       render();
@@ -1403,6 +2083,8 @@ function bindEvents() {
   });
 
   cancelTrainingBtn.addEventListener("click", () => {
+    resetLibraryPickers();
+
     if (state.editingTrainingId) {
       state.activeView = "training-detail";
       render();
@@ -1443,14 +2125,28 @@ function bindEvents() {
       return;
     }
 
+    const editingId = state.editingTrainingId;
+
     const formData = new FormData(trainingCreateForm);
     const isTemplate = formData.get("is_template") === "on";
     const warmupFile = warmupImageInput.files?.[0] || null;
     const sketchFile = sketchInput.files?.[0] || null;
 
-    const existingTraining = state.editingTrainingId
-        ? state.trainings.find((training) => training.id === state.editingTrainingId) || null
+    const existingTraining = editingId
+        ? state.trainings.find((training) => training.id === editingId) || null
         : null;
+
+    const collectedExercises = await collectExercisesFromForm();
+
+    let warmupPreviewUrl = warmupUploadBox.dataset.existingPreviewUrl || "";
+
+    if (warmupFile && warmupFile.type.startsWith("image/")) {
+      warmupPreviewUrl = await readFileAsDataUrl(warmupFile);
+    }
+
+    if (warmupFile && !warmupFile.type.startsWith("image/")) {
+      warmupPreviewUrl = "";
+    }
 
     const payload = {
       title: formData.get("title"),
@@ -1466,9 +2162,10 @@ function bindEvents() {
         description: formData.get("warmup_description"),
         image_name: warmupFile
             ? warmupFile.name
-            : (warmupUploadBox.dataset.existingFileName || "")
+            : (warmupUploadBox.dataset.existingFileName || ""),
+        image_preview_url: warmupPreviewUrl
       },
-      exercises: collectExercisesFromForm(),
+      exercises: collectedExercises,
       sketch_file_name: sketchFile
           ? sketchFile.name
           : (sketchUploadBox.dataset.existingFileName || ""),
@@ -1479,23 +2176,21 @@ function bindEvents() {
 
     let savedTraining = null;
 
-    if (state.editingTrainingId) {
-      savedTraining = await updateTraining(state.editingTrainingId, null, payload);
+    if (editingId) {
+      savedTraining = await updateTraining(editingId, null, payload);
     } else {
       savedTraining = await createTraining(null, payload);
     }
 
     if (!savedTraining) return;
 
-    const savedId = state.editingTrainingId || savedTraining.id;
-
-    state.selectedTrainingId = savedId;
+    state.selectedTrainingId = editingId || savedTraining.id;
     state.activeView = "training-detail";
 
     if (normalizeRole(state.currentUser.role) === "admin") {
       state.detailSourceView = state.editReturnView || "library";
     } else if (normalizeRole(state.currentUser.role) === "trainer") {
-      state.detailSourceView = state.editingTrainingId ? (state.editReturnView || "my-trainings") : "my-trainings";
+      state.detailSourceView = editingId ? (state.editReturnView || "my-trainings") : "my-trainings";
     }
 
     resetTrainingCreateForm();

@@ -4,7 +4,8 @@ import {
   getDocs,
   addDoc,
   updateDoc,
-  doc
+  doc,
+  deleteDoc
 } from "firebase/firestore";
 
 function toSafeString(value) {
@@ -34,14 +35,16 @@ function normalizeWarmupEntry(warmup) {
     name: toSafeString(warmup.name),
     duration: toSafeString(warmup.duration),
     description: toSafeString(warmup.description),
-    image_name: toSafeString(warmup.image_name)
+    image_name: toSafeString(warmup.image_name),
+    image_preview_url: toSafeString(warmup.image_preview_url)
   };
 
   const hasContent =
       normalized.name ||
       normalized.duration ||
       normalized.description ||
-      normalized.image_name;
+      normalized.image_name ||
+      normalized.image_preview_url;
 
   return hasContent ? normalized : null;
 }
@@ -52,7 +55,8 @@ function normalizeExerciseEntry(exercise) {
     duration: toSafeString(exercise?.duration),
     description: toSafeString(exercise?.description),
     material: toSafeString(exercise?.material),
-    sketch_file_name: toSafeString(exercise?.sketch_file_name)
+    sketch_file_name: toSafeString(exercise?.sketch_file_name),
+    sketch_preview_url: toSafeString(exercise?.sketch_preview_url)
   };
 
   const hasContent =
@@ -60,7 +64,8 @@ function normalizeExerciseEntry(exercise) {
       normalized.duration ||
       normalized.description ||
       normalized.material ||
-      normalized.sketch_file_name;
+      normalized.sketch_file_name ||
+      normalized.sketch_preview_url;
 
   return hasContent ? normalized : null;
 }
@@ -282,5 +287,26 @@ export async function updateTraining(trainingId, reloadTrainings, trainingData =
     console.error("Fehler beim Aktualisieren des Trainings:", error);
     alert("Training konnte nicht aktualisiert werden.");
     return null;
+  }
+}
+
+export async function deleteTraining(trainingId, reloadTrainings) {
+  if (!trainingId) {
+    alert("Training konnte nicht gelöscht werden.");
+    return false;
+  }
+
+  try {
+    await deleteDoc(doc(db, "trainings", trainingId));
+
+    if (typeof reloadTrainings === "function") {
+      await reloadTrainings();
+    }
+
+    return true;
+  } catch (error) {
+    console.error("Fehler beim Löschen des Trainings:", error);
+    alert("Training konnte nicht gelöscht werden.");
+    return false;
   }
 }
