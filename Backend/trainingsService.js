@@ -35,6 +35,8 @@ function normalizeWarmupEntry(warmup) {
     name: toSafeString(warmup.name),
     duration: toSafeString(warmup.duration),
     description: toSafeString(warmup.description),
+    coaching_points: toSafeString(warmup.coaching_points),
+    variation: toSafeString(warmup.variation),
     image_name: toSafeString(warmup.image_name),
     image_preview_url: toSafeString(warmup.image_preview_url)
   };
@@ -43,6 +45,8 @@ function normalizeWarmupEntry(warmup) {
       normalized.name ||
       normalized.duration ||
       normalized.description ||
+      normalized.coaching_points ||
+      normalized.variation ||
       normalized.image_name ||
       normalized.image_preview_url;
 
@@ -54,6 +58,8 @@ function normalizeExerciseEntry(exercise) {
     name: toSafeString(exercise?.name),
     duration: toSafeString(exercise?.duration),
     description: toSafeString(exercise?.description),
+    coaching_points: toSafeString(exercise?.coaching_points),
+    variation: toSafeString(exercise?.variation),
     material: toSafeString(exercise?.material),
     sketch_file_name: toSafeString(exercise?.sketch_file_name),
     sketch_preview_url: toSafeString(exercise?.sketch_preview_url)
@@ -63,6 +69,8 @@ function normalizeExerciseEntry(exercise) {
       normalized.name ||
       normalized.duration ||
       normalized.description ||
+      normalized.coaching_points ||
+      normalized.variation ||
       normalized.material ||
       normalized.sketch_file_name ||
       normalized.sketch_preview_url;

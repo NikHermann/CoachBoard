@@ -252,6 +252,13 @@
             </label>
 
             <label class="field">
+              <span class="field__label">Mannschaftsalter</span>
+              <select id="exercise-filter-age" class="field__control">
+                <option value="">Beliebig</option>
+              </select>
+            </label>
+
+            <label class="field">
               <span class="field__label">Spieleranzahl</span>
               <select id="exercise-filter-players" class="field__control">
                 <option value="">Beliebig</option>
@@ -463,6 +470,26 @@
               ></textarea>
             </label>
 
+            <div class="form-grid form-grid--2">
+              <label class="field">
+                <span class="field__label">Coachingpunkte</span>
+                <textarea
+                        class="field__control field__control--textarea"
+                        name="warmup_coaching_points"
+                        placeholder="Wichtige Coachingpunkte für das Aufwärmen..."
+                ></textarea>
+              </label>
+
+              <label class="field">
+                <span class="field__label">Variation</span>
+                <textarea
+                        class="field__control field__control--textarea"
+                        name="warmup_variation"
+                        placeholder="Mögliche Variationen für das Aufwärmen..."
+                ></textarea>
+              </label>
+            </div>
+
             <div class="field">
               <span class="field__label">Bild zur Aufwärmübung hochladen</span>
               <input
@@ -604,9 +631,10 @@
         </section>
 
         <section class="card settings-card">
-          <h3 class="editor-card__title">Rolle ändern</h3>
+          <h3 class="editor-card__title">Temporäre Rollenumschaltung</h3>
           <form id="dev-role-form" class="settings-form">
             <label class="field">
+              <span class="field__label">Rolle auswählen</span>
               <select id="profile-role-select" class="field__control">
                 <option value="admin">Admin</option>
                 <option value="trainer">Trainer</option>
@@ -615,7 +643,7 @@
             </label>
 
             <div class="editor-actions editor-actions--profile">
-              <button class="btn btn--primary" type="submit">Speichern</button>
+              <button class="btn btn--primary" type="submit">Rolle speichern</button>
             </div>
           </form>
         </section>

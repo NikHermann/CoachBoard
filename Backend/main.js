@@ -17,22 +17,134 @@ const state = {
   detailSourceView: "library",
   editingTrainingId: null,
   editReturnView: "library",
-  filters: {
-    age: "",
-    date: "",
-    players: "",
-    topic: ""
-  },
-  exerciseFilters: {
-    type: "",
-    players: "",
-    topic: ""
-  }
+  filters: { age: "", date: "", players: "", topic: "" },
+  exerciseFilters: { type: "", age: "", players: "", topic: "" }
 };
+
+const ROUTE_PATHS = {
+  library: "/bibliothek",
+  "my-trainings": "/meine-trainings",
+  "template-trainings": "/mustertrainings",
+  exercises: "/exercises",
+  profile: "/profil",
+  "username-edit": "/profil/benutzername",
+  "password-edit": "/profil/passwort",
+  "training-create": "/training/neu"
+};
+
+function getRoutePathFromState() {
+  if (state.activeView === "training-detail" && state.selectedTrainingId) {
+    return `/training/${encodeURIComponent(state.selectedTrainingId)}`;
+  }
+
+  if (state.activeView === "training-create" && state.editingTrainingId) {
+    return `/training/${encodeURIComponent(state.editingTrainingId)}/bearbeiten`;
+  }
+
+  return ROUTE_PATHS[state.activeView] || "/bibliothek";
+}
+
+function updateBrowserUrl(replace = false) {
+  const nextPath = getRoutePathFromState();
+
+  if (window.location.pathname === nextPath) {
+    return;
+  }
+
+  window.history[replace ? "replaceState" : "pushState"]({}, "", nextPath);
+}
+
+function applyBrowserRoute() {
+  const path = window.location.pathname.replace(/\/+$/, "") || "/bibliothek";
+  const segments = path.split("/").filter(Boolean);
+
+  state.selectedTrainingId = null;
+  state.editingTrainingId = null;
+  state.editReturnView = "library";
+
+  if (path === "/" || path === "/bibliothek") {
+    state.activeView = "library";
+    return;
+  }
+
+  if (path === "/meine-trainings") {
+    state.activeView = "my-trainings";
+    return;
+  }
+
+  if (path === "/mustertrainings") {
+    state.activeView = "template-trainings";
+    return;
+  }
+
+  if (path === "/exercises") {
+    state.activeView = "exercises";
+    return;
+  }
+
+  if (path === "/profil") {
+    state.activeView = "profile";
+    return;
+  }
+
+  if (path === "/profil/benutzername") {
+    state.activeView = "username-edit";
+    return;
+  }
+
+  if (path === "/profil/passwort") {
+    state.activeView = "password-edit";
+    return;
+  }
+
+  if (path === "/training/neu") {
+    resetTrainingCreateForm();
+    state.activeView = "training-create";
+    return;
+  }
+
+  if (segments[0] === "training" && segments[1] && segments[2] === "bearbeiten") {
+    const trainingId = decodeURIComponent(segments[1]);
+    const training = state.trainings.find((item) => item.id === trainingId) || null;
+
+    if (!training) {
+      state.selectedTrainingId = trainingId;
+      state.detailSourceView = "library";
+      state.activeView = "training-detail";
+      return;
+    }
+
+    const role = state.currentUser ? normalizeRole(state.currentUser.role) : "spieler";
+    const sourceView = role === "trainer" ? "my-trainings" : "library";
+
+    if (!canEditTraining(training, sourceView)) {
+      state.selectedTrainingId = trainingId;
+      state.detailSourceView = sourceView;
+      state.activeView = "training-detail";
+      return;
+    }
+
+    populateTrainingFormForEdit(training);
+    state.selectedTrainingId = trainingId;
+    state.editingTrainingId = trainingId;
+    state.editReturnView = sourceView;
+    state.detailSourceView = sourceView;
+    state.activeView = "training-create";
+    return;
+  }
+
+  if (segments[0] === "training" && segments[1]) {
+    state.selectedTrainingId = decodeURIComponent(segments[1]);
+    state.detailSourceView = "library";
+    state.activeView = "training-detail";
+    return;
+  }
+
+  state.activeView = "library";
+}
 
 const authScreen = document.getElementById("auth-screen");
 const dashboardApp = document.getElementById("dashboard-app");
-
 const authTabButtons = document.querySelectorAll("[data-auth-tab]");
 const authLoginPanel = document.getElementById("auth-login-panel");
 const authRegisterPanel = document.getElementById("auth-register-panel");
@@ -77,6 +189,7 @@ const filterPlayers = document.getElementById("filter-players");
 const filterTopic = document.getElementById("filter-topic");
 
 const exerciseFilterType = document.getElementById("exercise-filter-type");
+const exerciseFilterAge = document.getElementById("exercise-filter-age");
 const exerciseFilterPlayers = document.getElementById("exercise-filter-players");
 const exerciseFilterTopic = document.getElementById("exercise-filter-topic");
 const applyExerciseFiltersBtn = document.getElementById("apply-exercise-filters-btn");
@@ -109,7 +222,6 @@ const warmupImageInput = document.getElementById("warmup-image-input");
 const warmupUploadBox = document.getElementById("warmup-upload-box");
 const warmupUploadTitle = document.getElementById("warmup-upload-title");
 const warmupUploadSubtitle = document.getElementById("warmup-upload-subtitle");
-
 const sketchInput = document.getElementById("sketch-input");
 const sketchUploadBox = document.getElementById("sketch-upload-box");
 const sketchUploadTitle = document.getElementById("sketch-upload-title");
@@ -118,35 +230,28 @@ const sketchUploadSubtitle = document.getElementById("sketch-upload-subtitle");
 const applyFiltersBtn = document.getElementById("apply-filters-btn");
 const resetFiltersBtn = document.getElementById("reset-filters-btn");
 const logoutBtn = document.getElementById("logout-btn");
-
 const navLinks = document.querySelectorAll("[data-view]");
 
 const profileAvatar = document.getElementById("profile-avatar");
 const topbarUsername = document.getElementById("topbar-username");
 const topbarRole = document.getElementById("topbar-role");
-
 const profileUsernameDisplay = document.getElementById("profile-username-display");
 const profileRoleDisplay = document.getElementById("profile-role-display");
 const profileClubDisplay = document.getElementById("profile-club-display");
-
 const openUsernameEditBtn = document.getElementById("open-username-edit-btn");
 const openPasswordEditBtn = document.getElementById("open-password-edit-btn");
-
 const usernameEditForm = document.getElementById("username-edit-form");
 const usernameEditInput = document.getElementById("username-edit-input");
 const backToProfileFromUsernameBtn = document.getElementById("back-to-profile-from-username-btn");
 const cancelUsernameEditBtn = document.getElementById("cancel-username-edit-btn");
-
 const passwordEditForm = document.getElementById("password-edit-form");
 const currentPasswordInput = document.getElementById("current-password-input");
 const newPasswordInput = document.getElementById("new-password-input");
 const repeatPasswordInput = document.getElementById("repeat-password-input");
 const backToProfileFromPasswordBtn = document.getElementById("back-to-profile-from-password-btn");
 const cancelPasswordEditBtn = document.getElementById("cancel-password-edit-btn");
-
 const adminUserSection = document.getElementById("admin-user-section");
 const adminCreateUserForm = document.getElementById("admin-create-user-form");
-
 const devRoleForm = document.getElementById("dev-role-form");
 const profileRoleSelect = document.getElementById("profile-role-select");
 
@@ -156,6 +261,7 @@ function normalizeRole(role) {
   if (value === "trainerteam") return "trainer";
   if (value === "admin") return "admin";
   if (value === "trainer") return "trainer";
+
   return "spieler";
 }
 
@@ -164,6 +270,7 @@ function getRoleLabel(role) {
 
   if (normalized === "admin") return "Admin";
   if (normalized === "trainer") return "Trainer";
+
   return "Spieler";
 }
 
@@ -172,6 +279,7 @@ function getRoleAvatarClass(role) {
 
   if (normalized === "admin") return "profile-chip__avatar--admin";
   if (normalized === "trainer") return "profile-chip__avatar--trainer";
+
   return "profile-chip__avatar--spieler";
 }
 
@@ -269,7 +377,13 @@ function getAgeGroups() {
 function hasWarmupContent(warmup) {
   return Boolean(
       warmup &&
-      (warmup.name || warmup.duration || warmup.description || warmup.image_name || warmup.image_preview_url)
+      (warmup.name ||
+          warmup.duration ||
+          warmup.description ||
+          warmup.coaching_points ||
+          warmup.variation ||
+          warmup.image_name ||
+          warmup.image_preview_url)
   );
 }
 
@@ -371,12 +485,10 @@ function updateCurrentUserUI() {
   profileAvatar.className = `profile-chip__avatar ${getRoleAvatarClass(user.role)}`;
   topbarUsername.textContent = user.username;
   topbarRole.textContent = getRoleLabel(user.role);
-
   profileUsernameDisplay.textContent = user.username;
   profileRoleDisplay.textContent = getRoleLabel(user.role);
   profileClubDisplay.textContent = user.club;
   profileRoleSelect.value = normalizeRole(user.role);
-
   usernameEditInput.value = user.username;
   currentPasswordInput.value = "";
   newPasswordInput.value = "";
@@ -389,16 +501,17 @@ function updateCurrentUserUI() {
 function populateAgeFilter() {
   const currentValue = state.filters.age;
   const ageGroups = getAgeGroups();
-
   filterAge.innerHTML = `<option value="">Beliebig</option>`;
 
   ageGroups.forEach((ageGroup) => {
     const option = document.createElement("option");
     option.value = ageGroup;
     option.textContent = ageGroup;
+
     if (ageGroup === currentValue) {
       option.selected = true;
     }
+
     filterAge.appendChild(option);
   });
 }
@@ -406,16 +519,17 @@ function populateAgeFilter() {
 function populateTrainingAgeGroupSelect() {
   const currentValue = trainingAgeGroup.value;
   const ageGroups = getAgeGroups();
-
   trainingAgeGroup.innerHTML = `<option value="">Altersgruppe auswählen</option>`;
 
   ageGroups.forEach((ageGroup) => {
     const option = document.createElement("option");
     option.value = ageGroup;
     option.textContent = ageGroup;
+
     if (ageGroup === currentValue) {
       option.selected = true;
     }
+
     trainingAgeGroup.appendChild(option);
   });
 }
@@ -442,6 +556,25 @@ function populatePlayersFilter() {
 
 function populateExercisePlayersFilter() {
   fillPlayersSelect(exerciseFilterPlayers, state.exerciseFilters.players);
+}
+
+function populateExerciseAgeFilter() {
+  const currentValue = state.exerciseFilters.age;
+  const ageGroups = getAgeGroups();
+
+  exerciseFilterAge.innerHTML = `<option value="">Beliebig</option>`;
+
+  ageGroups.forEach((ageGroup) => {
+    const option = document.createElement("option");
+    option.value = ageGroup;
+    option.textContent = ageGroup;
+
+    if (ageGroup === currentValue) {
+      option.selected = true;
+    }
+
+    exerciseFilterAge.appendChild(option);
+  });
 }
 
 function getCurrentBaseList() {
@@ -486,11 +619,7 @@ function applyFiltersToList(list) {
     }
 
     if (state.filters.topic) {
-      const haystack = [
-        training.title,
-        training.description,
-        training.age_group
-      ].join(" ").toLowerCase();
+      const haystack = [training.title, training.description, training.age_group].join(" ").toLowerCase();
 
       if (!haystack.includes(state.filters.topic.toLowerCase())) {
         return false;
@@ -515,6 +644,8 @@ function buildExerciseEntries() {
         title: training.warmup.name || "Aufwärmen",
         duration: training.warmup.duration || "",
         description: training.warmup.description || "",
+        coaching_points: training.warmup.coaching_points || "",
+        variation: training.warmup.variation || "",
         material: "",
         image_name: training.warmup.image_name || "",
         image_preview_url: training.warmup.image_preview_url || "",
@@ -533,14 +664,14 @@ function buildExerciseEntries() {
       training.exercises.forEach((exercise, index) => {
         const hasContent = Boolean(
             exercise &&
-            (
-                exercise.name ||
+            (exercise.name ||
                 exercise.duration ||
                 exercise.description ||
+                exercise.coaching_points ||
+                exercise.variation ||
                 exercise.material ||
                 exercise.sketch_file_name ||
-                exercise.sketch_preview_url
-            )
+                exercise.sketch_preview_url)
         );
 
         if (!hasContent) return;
@@ -554,6 +685,8 @@ function buildExerciseEntries() {
           title: exercise.name || `Übung ${index + 1}`,
           duration: exercise.duration || "",
           description: exercise.description || "",
+          coaching_points: exercise.coaching_points || "",
+          variation: exercise.variation || "",
           material: exercise.material || "",
           image_name: "",
           image_preview_url: "",
@@ -573,6 +706,7 @@ function buildExerciseEntries() {
   return entries.sort((a, b) => {
     const dateA = new Date(a.sortDate).getTime() || 0;
     const dateB = new Date(b.sortDate).getTime() || 0;
+
     return dateB - dateA;
   });
 }
@@ -583,8 +717,13 @@ function applyExerciseFiltersToList(list) {
       return false;
     }
 
+    if (state.exerciseFilters.age && entry.age_group !== state.exerciseFilters.age) {
+      return false;
+    }
+
     if (state.exerciseFilters.players) {
       const selectedPlayers = Number(state.exerciseFilters.players);
+
       if (Number(entry.required_players || 0) !== selectedPlayers) {
         return false;
       }
@@ -594,11 +733,15 @@ function applyExerciseFiltersToList(list) {
       const haystack = [
         entry.title,
         entry.description,
+        entry.coaching_points,
+        entry.variation,
         entry.material,
         entry.trainingTitle,
         entry.age_group,
         entry.typeLabel
-      ].join(" ").toLowerCase();
+      ]
+          .join(" ")
+          .toLowerCase();
 
       if (!haystack.includes(state.exerciseFilters.topic.toLowerCase())) {
         return false;
@@ -614,17 +757,20 @@ function filterLibraryEntries(type, searchTerm) {
 
   return state.exerciseEntries.filter((entry) => {
     if (entry.type !== type) return false;
-
     if (!term) return true;
 
     const haystack = [
       entry.title,
       entry.description,
+      entry.coaching_points,
+      entry.variation,
       entry.material,
       entry.trainingTitle,
       entry.age_group,
       entry.typeLabel
-    ].join(" ").toLowerCase();
+    ]
+        .join(" ")
+        .toLowerCase();
 
     return haystack.includes(term);
   });
@@ -634,7 +780,9 @@ function renderStats() {
   const total = state.trainings.length;
   const templates = state.trainings.filter((training) => training.is_template).length;
   const mine = state.currentUser
-      ? state.trainings.filter((training) => !training.is_template && training.created_by_user_id === state.currentUser.id).length
+      ? state.trainings.filter(
+          (training) => !training.is_template && training.created_by_user_id === state.currentUser.id
+      ).length
       : 0;
 
   statsGrid.innerHTML = `
@@ -718,11 +866,9 @@ function createWarmupImageMarkup(warmup) {
   if (isImageDataUrl(warmup.image_preview_url)) {
     return `
       <div class="detail-image-frame">
-        <img
-          class="detail-image"
-          src="${warmup.image_preview_url}"
-          alt="${warmup.name ? `Bild zu ${warmup.name}` : "Aufwärmbild"}"
-        />
+        <img class="detail-image" src="${warmup.image_preview_url}" alt="${
+        warmup.name ? `Bild zu ${warmup.name}` : "Aufwärmbild"
+    }" />
         <div class="detail-image-caption">
           ${warmup.image_name || "Bildvorschau"}
         </div>
@@ -741,11 +887,9 @@ function createExerciseImageMarkup(exercise) {
   if (isImageDataUrl(exercise.sketch_preview_url)) {
     return `
       <div class="detail-image-frame">
-        <img
-          class="detail-image"
-          src="${exercise.sketch_preview_url}"
-          alt="${exercise.name ? `Skizze zu ${exercise.name}` : "Übungsskizze"}"
-        />
+        <img class="detail-image" src="${exercise.sketch_preview_url}" alt="${
+        exercise.name ? `Skizze zu ${exercise.name}` : "Übungsskizze"
+    }" />
         <div class="detail-image-caption">
           ${exercise.sketch_file_name || "Bildvorschau"}
         </div>
@@ -785,22 +929,18 @@ function renderTrainingDetail() {
       ? "Detailansicht eines Mustertrainings"
       : "Detailansicht einer Trainingseinheit";
 
-  const typeBadge = training.is_template
-      ? `<span class="detail-pill detail-pill--template">Mustertraining</span>`
-      : `<span class="detail-pill detail-pill--default">Trainingseinheit</span>`;
-
   trainingDetailMeta.innerHTML = [
     createDetailMetaItem("Name", training.title),
     createDetailMetaItem("Datum", training.dateLabel),
     createDetailMetaItem("Spieleranzahl", training.required_players || "—"),
     createDetailMetaItem("Altersgruppe", training.age_group || "—"),
     createDetailMetaItem("Dauer", training.duration ? `${training.duration} min` : "—"),
-    createDetailMetaItem("Typ", typeBadge),
     createDetailMetaItem("Ersteller", training.created_by_username || "—")
   ].join("");
 
   const warmup = training.warmup;
-  if (warmup && (warmup.name || warmup.duration || warmup.description || warmup.image_name || warmup.image_preview_url)) {
+
+  if (hasWarmupContent(warmup)) {
     trainingDetailWarmup.innerHTML = `
       <div class="detail-card">
         <h4 class="detail-card__title">${warmup.name || "Aufwärmübung"}</h4>
@@ -815,6 +955,14 @@ function renderTrainingDetail() {
             <div>
               <span class="detail-meta-item__label">Beschreibung</span>
               <p class="detail-text">${warmup.description || "Keine Beschreibung vorhanden."}</p>
+            </div>
+            <div>
+              <span class="detail-meta-item__label">Coachingpunkte</span>
+              <p class="detail-text">${warmup.coaching_points || "Keine Coachingpunkte vorhanden."}</p>
+            </div>
+            <div>
+              <span class="detail-meta-item__label">Variation</span>
+              <p class="detail-text">${warmup.variation || "Keine Variation vorhanden."}</p>
             </div>
           </div>
           <div class="detail-split__media">
@@ -831,33 +979,47 @@ function renderTrainingDetail() {
   if (Array.isArray(training.exercises) && training.exercises.length > 0) {
     trainingDetailExercises.innerHTML = `
       <div class="detail-stack">
-        ${training.exercises.map((exercise, index) => `
-          <div class="detail-card">
-            <h4 class="detail-card__title">Übung ${index + 1}${exercise.name ? ` – ${exercise.name}` : ""}</h4>
-            <div class="detail-split">
-              <div class="detail-split__content">
-                <div class="detail-inline-grid detail-inline-grid--2">
-                  <div>
-                    <span class="detail-meta-item__label">Dauer</span>
-                    <div class="detail-meta-item__value">${exercise.duration || "—"}</div>
+        ${training.exercises
+        .map(
+            (exercise, index) => `
+              <div class="detail-card">
+                <h4 class="detail-card__title">Übung ${index + 1}${
+                exercise.name ? ` – ${exercise.name}` : ""
+            }</h4>
+                <div class="detail-split">
+                  <div class="detail-split__content">
+                    <div class="detail-inline-grid detail-inline-grid--2">
+                      <div>
+                        <span class="detail-meta-item__label">Dauer</span>
+                        <div class="detail-meta-item__value">${exercise.duration || "—"}</div>
+                      </div>
+                      <div>
+                        <span class="detail-meta-item__label">Material</span>
+                        <div class="detail-meta-item__value">${exercise.material || "—"}</div>
+                      </div>
+                    </div>
+                    <div>
+                      <span class="detail-meta-item__label">Beschreibung</span>
+                      <p class="detail-text">${exercise.description || "Keine Beschreibung vorhanden."}</p>
+                    </div>
+                    <div>
+                      <span class="detail-meta-item__label">Coachingpunkte</span>
+                      <p class="detail-text">${exercise.coaching_points || "Keine Coachingpunkte vorhanden."}</p>
+                    </div>
+                    <div>
+                      <span class="detail-meta-item__label">Variation</span>
+                      <p class="detail-text">${exercise.variation || "Keine Variation vorhanden."}</p>
+                    </div>
                   </div>
-                  <div>
-                    <span class="detail-meta-item__label">Material</span>
-                    <div class="detail-meta-item__value">${exercise.material || "—"}</div>
+                  <div class="detail-split__media">
+                    <span class="detail-meta-item__label">Skizze / Bild</span>
+                    ${createExerciseImageMarkup(exercise)}
                   </div>
                 </div>
-                <div>
-                  <span class="detail-meta-item__label">Beschreibung</span>
-                  <p class="detail-text">${exercise.description || "Keine Beschreibung vorhanden."}</p>
-                </div>
               </div>
-              <div class="detail-split__media">
-                <span class="detail-meta-item__label">Skizze / Bild</span>
-                ${createExerciseImageMarkup(exercise)}
-              </div>
-            </div>
-          </div>
-        `).join("")}
+            `
+        )
+        .join("")}
       </div>
     `;
   } else {
@@ -870,7 +1032,6 @@ function renderTrainingDetail() {
         <div class="detail-file-box">
           Hinterlegte Datei: <strong>${training.sketch_file_name}</strong>
         </div>
-
         <a
           href="https://ft-graphics.fussballtraining.com/"
           target="_blank"
@@ -885,7 +1046,6 @@ function renderTrainingDetail() {
     trainingDetailSketch.innerHTML = `
       <div class="detail-sketch-stack">
         <div class="detail-empty">Keine Skizze oder Datei hinterlegt.</div>
-
         <a
           href="https://ft-graphics.fussballtraining.com/"
           target="_blank"
@@ -917,25 +1077,29 @@ function renderTable() {
     return;
   }
 
-  const rows = visibleItems.map((training) => {
-    return `
-      <tr class="training-table__row--clickable" tabindex="0" data-training-id="${training.id}">
-        <td>
-          <button class="training-name training-name--button" type="button">
-            ${training.title}
-          </button>
-        </td>
-        <td>${training.dateLabel}</td>
-        <td>${training.required_players || "—"}</td>
-        <td>
-          <span class="mt-indicator ${training.is_template ? "mt-indicator--active" : "mt-indicator--inactive"}">
-            ${training.is_template ? "✓" : "–"}
-          </span>
-        </td>
-        <td><span class="category-pill">${training.age_group}</span></td>
-      </tr>
-    `;
-  }).join("");
+  const rows = visibleItems
+      .map((training) => {
+        return `
+        <tr class="training-table__row--clickable" tabindex="0" data-training-id="${training.id}">
+          <td>
+            <button class="training-name training-name--button" type="button">
+              ${training.title}
+            </button>
+          </td>
+          <td>${training.dateLabel}</td>
+          <td>${training.required_players || "—"}</td>
+          <td>
+            <span class="mt-indicator ${
+            training.is_template ? "mt-indicator--active" : "mt-indicator--inactive"
+        }">
+              ${training.is_template ? "✓" : "–"}
+            </span>
+          </td>
+          <td><span class="category-pill">${training.age_group}</span></td>
+        </tr>
+      `;
+      })
+      .join("");
 
   trainingsTableWrap.innerHTML = `
     <table class="training-table">
@@ -979,7 +1143,9 @@ function renderPagination(totalPages) {
   const buttons = [];
 
   buttons.push(`
-    <button class="pagination__btn ${state.currentPage === 1 ? "is-disabled" : ""}" data-page="${state.currentPage - 1}">
+    <button class="pagination__btn ${state.currentPage === 1 ? "is-disabled" : ""}" data-page="${
+      state.currentPage - 1
+  }">
       Zurück
     </button>
   `);
@@ -993,7 +1159,9 @@ function renderPagination(totalPages) {
   }
 
   buttons.push(`
-    <button class="pagination__btn ${state.currentPage === totalPages ? "is-disabled" : ""}" data-page="${state.currentPage + 1}">
+    <button class="pagination__btn ${
+      state.currentPage === totalPages ? "is-disabled" : ""
+  }" data-page="${state.currentPage + 1}">
       Weiter
     </button>
   `);
@@ -1024,24 +1192,26 @@ function renderExercisesTable() {
     return;
   }
 
-  const rows = visibleItems.map((entry) => {
-    const typeBadgeClass = entry.type === "warmup" ? "detail-pill--warmup" : "detail-pill--exercise";
+  const rows = visibleItems
+      .map((entry) => {
+        const typeBadgeClass = entry.type === "warmup" ? "detail-pill--warmup" : "detail-pill--exercise";
 
-    return `
-      <tr class="training-table__row--clickable" tabindex="0" data-exercise-training-id="${entry.trainingId}">
-        <td>
-          <button class="training-name training-name--button" type="button">
-            ${entry.title}
-          </button>
-        </td>
-        <td><span class="detail-pill ${typeBadgeClass}">${entry.typeLabel}</span></td>
-        <td>${entry.trainingTitle}</td>
-        <td>${entry.required_players || "—"}</td>
-        <td><span class="category-pill">${entry.age_group}</span></td>
-        <td>${entry.dateLabel}</td>
-      </tr>
-    `;
-  }).join("");
+        return `
+        <tr class="training-table__row--clickable" tabindex="0" data-exercise-training-id="${entry.trainingId}">
+          <td>
+            <button class="training-name training-name--button" type="button">
+              ${entry.title}
+            </button>
+          </td>
+          <td><span class="detail-pill ${typeBadgeClass}">${entry.typeLabel}</span></td>
+          <td>${entry.trainingTitle}</td>
+          <td>${entry.required_players || "—"}</td>
+          <td><span class="category-pill">${entry.age_group}</span></td>
+          <td>${entry.dateLabel}</td>
+        </tr>
+      `;
+      })
+      .join("");
 
   exercisesTableWrap.innerHTML = `
     <table class="training-table">
@@ -1086,7 +1256,9 @@ function renderExercisesPagination(totalPages) {
   const buttons = [];
 
   buttons.push(`
-    <button class="pagination__btn ${state.currentPage === 1 ? "is-disabled" : ""}" data-exercise-page="${state.currentPage - 1}">
+    <button class="pagination__btn ${state.currentPage === 1 ? "is-disabled" : ""}" data-exercise-page="${
+      state.currentPage - 1
+  }">
       Zurück
     </button>
   `);
@@ -1100,7 +1272,9 @@ function renderExercisesPagination(totalPages) {
   }
 
   buttons.push(`
-    <button class="pagination__btn ${state.currentPage === totalPages ? "is-disabled" : ""}" data-exercise-page="${state.currentPage + 1}">
+    <button class="pagination__btn ${
+      state.currentPage === totalPages ? "is-disabled" : ""
+  }" data-exercise-page="${state.currentPage + 1}">
       Weiter
     </button>
   `);
@@ -1123,28 +1297,30 @@ function renderLibraryResults(container, entries, mode) {
     return;
   }
 
-  container.innerHTML = entries.map((entry) => {
-    const typeBadgeClass = entry.type === "warmup" ? "detail-pill--warmup" : "detail-pill--exercise";
-    const description = entry.description || "Keine Beschreibung vorhanden.";
+  container.innerHTML = entries
+      .map((entry) => {
+        const typeBadgeClass = entry.type === "warmup" ? "detail-pill--warmup" : "detail-pill--exercise";
+        const description = entry.description || "Keine Beschreibung vorhanden.";
 
-    return `
-      <div class="library-picker__item">
-        <div class="library-picker__meta">
-          <div class="library-picker__title">${entry.title}</div>
-          <div class="library-picker__subline">
-            <span class="detail-pill ${typeBadgeClass}">${entry.typeLabel}</span>
-            &nbsp;•&nbsp; ${entry.trainingTitle}
-            &nbsp;•&nbsp; ${entry.age_group}
-            &nbsp;•&nbsp; ${entry.required_players || "—"} Spieler
+        return `
+        <div class="library-picker__item">
+          <div class="library-picker__meta">
+            <div class="library-picker__title">${entry.title}</div>
+            <div class="library-picker__subline">
+              <span class="detail-pill ${typeBadgeClass}">${entry.typeLabel}</span>
+              &nbsp;•&nbsp; ${entry.trainingTitle}
+              &nbsp;•&nbsp; ${entry.age_group}
+              &nbsp;•&nbsp; ${entry.required_players || "—"} Spieler
+            </div>
+            <div class="library-picker__copy">${description}</div>
           </div>
-          <div class="library-picker__copy">${description}</div>
+          <button class="btn btn--primary" type="button" data-library-select="${mode}" data-library-id="${entry.id}">
+            Einfügen
+          </button>
         </div>
-        <button class="btn btn--primary" type="button" data-library-select="${mode}" data-library-id="${entry.id}">
-          Einfügen
-        </button>
-      </div>
-    `;
-  }).join("");
+      `;
+      })
+      .join("");
 }
 
 function renderWarmupLibrary() {
@@ -1193,6 +1369,14 @@ function useWarmupLibraryEntry(entry) {
   trainingCreateForm.elements.warmup_duration.value = entry.duration || "";
   trainingCreateForm.elements.warmup_description.value = entry.description || "";
 
+  if (trainingCreateForm.elements.warmup_coaching_points) {
+    trainingCreateForm.elements.warmup_coaching_points.value = entry.coaching_points || "";
+  }
+
+  if (trainingCreateForm.elements.warmup_variation) {
+    trainingCreateForm.elements.warmup_variation.value = entry.variation || "";
+  }
+
   setUploadBoxExistingFile(
       warmupUploadBox,
       warmupUploadTitle,
@@ -1211,6 +1395,8 @@ function useExerciseLibraryEntry(entry) {
     name: entry.title || "",
     duration: entry.duration || "",
     description: entry.description || "",
+    coaching_points: entry.coaching_points || "",
+    variation: entry.variation || "",
     material: entry.material || "",
     sketch_file_name: entry.sketch_file_name || "",
     sketch_preview_url: entry.sketch_preview_url || ""
@@ -1286,6 +1472,7 @@ function renderListing() {
 
 function renderExercisesView() {
   state.filteredExerciseEntries = applyExerciseFiltersToList(state.exerciseEntries);
+
   renderExerciseStats();
   renderExercisesTable();
 }
@@ -1312,6 +1499,8 @@ function render() {
     renderWarmupLibrary();
     renderExerciseLibrary();
   }
+
+  updateBrowserUrl();
 }
 
 function readFiltersFromInputs() {
@@ -1322,12 +1511,7 @@ function readFiltersFromInputs() {
 }
 
 function resetFilters() {
-  state.filters = {
-    age: "",
-    date: "",
-    players: "",
-    topic: ""
-  };
+  state.filters = { age: "", date: "", players: "", topic: "" };
 
   filterAge.value = "";
   filterDate.value = "";
@@ -1337,18 +1521,16 @@ function resetFilters() {
 
 function readExerciseFiltersFromInputs() {
   state.exerciseFilters.type = exerciseFilterType.value;
+  state.exerciseFilters.age = exerciseFilterAge.value;
   state.exerciseFilters.players = exerciseFilterPlayers.value;
   state.exerciseFilters.topic = exerciseFilterTopic.value.trim();
 }
 
 function resetExerciseFilters() {
-  state.exerciseFilters = {
-    type: "",
-    players: "",
-    topic: ""
-  };
+  state.exerciseFilters = { type: "", age: "", players: "", topic: "" };
 
   exerciseFilterType.value = "";
+  exerciseFilterAge.value = "";
   exerciseFilterPlayers.value = "";
   exerciseFilterTopic.value = "";
 }
@@ -1361,15 +1543,7 @@ function resetUploadBox(box, titleEl, subtitleEl, title, subtitle) {
   subtitleEl.textContent = subtitle;
 }
 
-function setUploadBoxExistingFile(
-    box,
-    titleEl,
-    subtitleEl,
-    fileName,
-    defaultTitle,
-    defaultSubtitle,
-    previewUrl = ""
-) {
+function setUploadBoxExistingFile(box, titleEl, subtitleEl, fileName, defaultTitle, defaultSubtitle, previewUrl = "") {
   if (!fileName) {
     resetUploadBox(box, titleEl, subtitleEl, defaultTitle, defaultSubtitle);
     return;
@@ -1440,7 +1614,6 @@ function attachExerciseUploadBox(block) {
 function createExerciseBlock(exerciseData = null) {
   const wrapper = document.createElement("section");
   wrapper.className = "editor-card exercise-card";
-
   wrapper.innerHTML = `
     <div class="exercise-card__header">
       <h3 class="editor-card__title exercise-card__title">Übung</h3>
@@ -1463,6 +1636,18 @@ function createExerciseBlock(exerciseData = null) {
       <span class="field__label">Beschreibung</span>
       <textarea class="field__control field__control--textarea" name="exercise_description" placeholder="Beschreiben Sie die Übung detailliert..."></textarea>
     </label>
+
+    <div class="form-grid form-grid--2">
+      <label class="field">
+        <span class="field__label">Coachingpunkte</span>
+        <textarea class="field__control field__control--textarea" name="exercise_coaching_points" placeholder="Wichtige Coachingpunkte..."></textarea>
+      </label>
+
+      <label class="field">
+        <span class="field__label">Variation</span>
+        <textarea class="field__control field__control--textarea" name="exercise_variation" placeholder="Mögliche Variationen..."></textarea>
+      </label>
+    </div>
 
     <label class="field">
       <span class="field__label">Material</span>
@@ -1487,6 +1672,8 @@ function createExerciseBlock(exerciseData = null) {
     wrapper.querySelector('[name="exercise_name"]').value = exerciseData.name || "";
     wrapper.querySelector('[name="exercise_duration"]').value = exerciseData.duration || "";
     wrapper.querySelector('[name="exercise_description"]').value = exerciseData.description || "";
+    wrapper.querySelector('[name="exercise_coaching_points"]').value = exerciseData.coaching_points || "";
+    wrapper.querySelector('[name="exercise_variation"]').value = exerciseData.variation || "";
     wrapper.querySelector('[name="exercise_material"]').value = exerciseData.material || "";
 
     const box = wrapper.querySelector(".exercise-upload-box");
@@ -1528,6 +1715,7 @@ function resetTrainingCreateForm() {
   trainingCreateForm.reset();
   state.editingTrainingId = null;
   state.editReturnView = "library";
+
   populateTrainingAgeGroupSelect();
   resetLibraryPickers();
 
@@ -1537,14 +1725,7 @@ function resetTrainingCreateForm() {
   warmupImageInput.value = "";
   sketchInput.value = "";
 
-  resetUploadBox(
-      warmupUploadBox,
-      warmupUploadTitle,
-      warmupUploadSubtitle,
-      "Bild hochladen",
-      "PNG oder JPG bis 5MB"
-  );
-
+  resetUploadBox(warmupUploadBox, warmupUploadTitle, warmupUploadSubtitle, "Bild hochladen", "PNG oder JPG bis 5MB");
   resetUploadBox(
       sketchUploadBox,
       sketchUploadTitle,
@@ -1568,6 +1749,14 @@ function populateTrainingFormForEdit(training) {
   trainingCreateForm.elements.warmup_name.value = training.warmup?.name || "";
   trainingCreateForm.elements.warmup_duration.value = training.warmup?.duration || "";
   trainingCreateForm.elements.warmup_description.value = training.warmup?.description || "";
+
+  if (trainingCreateForm.elements.warmup_coaching_points) {
+    trainingCreateForm.elements.warmup_coaching_points.value = training.warmup?.coaching_points || "";
+  }
+
+  if (trainingCreateForm.elements.warmup_variation) {
+    trainingCreateForm.elements.warmup_variation.value = training.warmup?.variation || "";
+  }
 
   setUploadBoxExistingFile(
       warmupUploadBox,
@@ -1606,18 +1795,22 @@ function openTrainingCreateView() {
 
 function openTrainingEditView() {
   const training = getSelectedTraining();
+
   if (!training) return;
   if (!canEditTraining(training, state.detailSourceView)) return;
 
   populateTrainingFormForEdit(training);
+
   state.editingTrainingId = training.id;
   state.editReturnView = state.detailSourceView || "library";
   state.activeView = "training-create";
+
   render();
 }
 
 function openUsernameEditView() {
   if (!state.currentUser) return;
+
   usernameEditInput.value = state.currentUser.username;
   state.activeView = "username-edit";
   render();
@@ -1625,6 +1818,7 @@ function openUsernameEditView() {
 
 function openPasswordEditView() {
   if (!state.currentUser) return;
+
   currentPasswordInput.value = "";
   newPasswordInput.value = "";
   repeatPasswordInput.value = "";
@@ -1657,6 +1851,8 @@ async function collectExercisesFromForm() {
           name: block.querySelector('[name="exercise_name"]')?.value || "",
           duration: block.querySelector('[name="exercise_duration"]')?.value || "",
           description: block.querySelector('[name="exercise_description"]')?.value || "",
+          coaching_points: block.querySelector('[name="exercise_coaching_points"]')?.value || "",
+          variation: block.querySelector('[name="exercise_variation"]')?.value || "",
           material: block.querySelector('[name="exercise_material"]')?.value || "",
           sketch_file_name: sketchFile ? sketchFile.name : existingSketchFileName,
           sketch_preview_url: sketchPreviewUrl
@@ -1669,6 +1865,8 @@ async function collectExercisesFromForm() {
         exercise.name ||
         exercise.duration ||
         exercise.description ||
+        exercise.coaching_points ||
+        exercise.variation ||
         exercise.material ||
         exercise.sketch_file_name ||
         exercise.sketch_preview_url
@@ -1676,12 +1874,11 @@ async function collectExercisesFromForm() {
   });
 }
 
-async function loadAll() {
+async function loadAll(options = {}) {
+  const applyRoute = Boolean(options.applyRoute);
+
   try {
-    const [trainingEntries, userEntries] = await Promise.all([
-      fetchTrainingEntries(),
-      fetchUsers()
-    ]);
+    const [trainingEntries, userEntries] = await Promise.all([fetchTrainingEntries(), fetchUsers()]);
 
     state.trainings = trainingEntries.map(normalizeTraining);
     state.users = userEntries.map(normalizeUser);
@@ -1689,6 +1886,7 @@ async function loadAll() {
 
     populateAgeFilter();
     populatePlayersFilter();
+    populateExerciseAgeFilter();
     populateExercisePlayersFilter();
     populateTrainingAgeGroupSelect();
 
@@ -1697,6 +1895,11 @@ async function loadAll() {
     }
 
     syncCurrentUserFromStorage();
+
+    if (applyRoute) {
+      applyBrowserRoute();
+    }
+
     render();
   } catch (error) {
     console.error("Fehler beim Laden:", error);
@@ -1709,11 +1912,8 @@ function findNewestMatchingUser(username, club, role) {
 
   for (let index = state.users.length - 1; index >= 0; index -= 1) {
     const user = state.users[index];
-    if (
-        user.username === username &&
-        user.club === club &&
-        normalizeRole(user.role) === targetRole
-    ) {
+
+    if (user.username === username && user.club === club && normalizeRole(user.role) === targetRole) {
       return user;
     }
   }
@@ -1771,16 +1971,11 @@ function bindEvents() {
       return;
     }
 
-    await createUser(null, {
-      username,
-      club,
-      role: "trainer",
-      password
-    });
-
+    await createUser(null, { username, club, role: "trainer", password });
     await loadAll();
 
     const createdUser = findNewestMatchingUser(username, club, "trainer");
+
     if (createdUser) {
       state.activeView = "library";
       state.currentPage = 1;
@@ -1807,10 +2002,7 @@ function bindEvents() {
       return;
     }
 
-    const result = await updateUserProfile(state.currentUser.id, {
-      username: newUsername
-    });
-
+    const result = await updateUserProfile(state.currentUser.id, { username: newUsername });
     if (!result) return;
 
     await loadAll();
@@ -1868,7 +2060,6 @@ function bindEvents() {
     }
 
     const selectedRole = normalizeRole(profileRoleSelect.value);
-
     const result = await updateUserProfile(state.currentUser.id, {
       username: state.currentUser.username,
       role: selectedRole
@@ -1901,16 +2092,12 @@ function bindEvents() {
       return;
     }
 
-    await createUser(null, {
-      username,
-      club,
-      role,
-      password
-    });
+    await createUser(null, { username, club, role, password });
 
     adminCreateUserForm.reset();
     adminCreateUserForm.querySelector('[name="club"]').value = "TSV Ottensheim";
     adminCreateUserForm.querySelector('[name="role"]').value = "spieler";
+
     await loadAll();
     state.activeView = "profile";
     render();
@@ -2010,6 +2197,7 @@ function bindEvents() {
 
   resetExerciseFiltersBtn.addEventListener("click", () => {
     resetExerciseFilters();
+    populateExerciseAgeFilter();
     populateExercisePlayersFilter();
     state.currentPage = 1;
     render();
@@ -2126,16 +2314,13 @@ function bindEvents() {
     }
 
     const editingId = state.editingTrainingId;
-
     const formData = new FormData(trainingCreateForm);
     const isTemplate = formData.get("is_template") === "on";
     const warmupFile = warmupImageInput.files?.[0] || null;
     const sketchFile = sketchInput.files?.[0] || null;
-
     const existingTraining = editingId
         ? state.trainings.find((training) => training.id === editingId) || null
         : null;
-
     const collectedExercises = await collectExercisesFromForm();
 
     let warmupPreviewUrl = warmupUploadBox.dataset.existingPreviewUrl || "";
@@ -2160,15 +2345,13 @@ function bindEvents() {
         name: formData.get("warmup_name"),
         duration: formData.get("warmup_duration"),
         description: formData.get("warmup_description"),
-        image_name: warmupFile
-            ? warmupFile.name
-            : (warmupUploadBox.dataset.existingFileName || ""),
+        coaching_points: formData.get("warmup_coaching_points"),
+        variation: formData.get("warmup_variation"),
+        image_name: warmupFile ? warmupFile.name : warmupUploadBox.dataset.existingFileName || "",
         image_preview_url: warmupPreviewUrl
       },
       exercises: collectedExercises,
-      sketch_file_name: sketchFile
-          ? sketchFile.name
-          : (sketchUploadBox.dataset.existingFileName || ""),
+      sketch_file_name: sketchFile ? sketchFile.name : sketchUploadBox.dataset.existingFileName || "",
       created_by_user_id: existingTraining?.created_by_user_id || state.currentUser.id,
       created_by_username: existingTraining?.created_by_username || state.currentUser.username,
       created_at: existingTraining?.created_at || null
@@ -2190,7 +2373,7 @@ function bindEvents() {
     if (normalizeRole(state.currentUser.role) === "admin") {
       state.detailSourceView = state.editReturnView || "library";
     } else if (normalizeRole(state.currentUser.role) === "trainer") {
-      state.detailSourceView = editingId ? (state.editReturnView || "my-trainings") : "my-trainings";
+      state.detailSourceView = editingId ? state.editReturnView || "my-trainings" : "my-trainings";
     }
 
     resetTrainingCreateForm();
@@ -2224,6 +2407,11 @@ function bindEvents() {
   );
 }
 
+window.addEventListener("popstate", () => {
+  applyBrowserRoute();
+  render();
+});
+
 bindEvents();
 setAuthTab("login");
-loadAll();
+loadAll({ applyRoute: true });
