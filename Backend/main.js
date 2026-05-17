@@ -180,6 +180,7 @@ const trainingDetailExercises = document.getElementById("training-detail-exercis
 const trainingDetailSketch = document.getElementById("training-detail-sketch");
 const trainingDetailNotes = document.getElementById("training-detail-notes");
 const backFromDetailBtn = document.getElementById("back-from-detail-btn");
+const detailPrintBtn = document.getElementById("detail-print-btn");
 const detailDeleteBtn = document.getElementById("detail-delete-btn");
 const detailEditBtn = document.getElementById("detail-edit-btn");
 
@@ -338,6 +339,7 @@ function normalizeTraining(training) {
     warmup: training.warmup || null,
     exercises: Array.isArray(training.exercises) ? training.exercises : [],
     sketch_file_name: training.sketch_file_name || "",
+    sketch_preview_url: training.sketch_preview_url || "",
     created_by_user_id: training.created_by_user_id || "",
     created_by_username: training.created_by_username || "",
     dateLabel: formatDate(effectiveDate),
@@ -630,6 +632,29 @@ function applyFiltersToList(list) {
   });
 }
 
+function normalizeExerciseDuplicateValue(value) {
+  return String(value || "")
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, " ");
+}
+
+function createExerciseDuplicateKey(entry) {
+  return [
+    entry.type,
+    entry.title,
+    entry.duration,
+    entry.description,
+    entry.coaching_points,
+    entry.variation,
+    entry.material,
+    entry.image_name,
+    entry.sketch_file_name
+  ]
+      .map(normalizeExerciseDuplicateValue)
+      .join("|");
+}
+
 function buildExerciseEntries() {
   const entries = [];
 
@@ -703,11 +728,24 @@ function buildExerciseEntries() {
     }
   });
 
-  return entries.sort((a, b) => {
+  const sortedEntries = entries.sort((a, b) => {
     const dateA = new Date(a.sortDate).getTime() || 0;
     const dateB = new Date(b.sortDate).getTime() || 0;
 
     return dateB - dateA;
+  });
+
+  const seenExercises = new Set();
+
+  return sortedEntries.filter((entry) => {
+    const duplicateKey = createExerciseDuplicateKey(entry);
+
+    if (seenExercises.has(duplicateKey)) {
+      return false;
+    }
+
+    seenExercises.add(duplicateKey);
+    return true;
   });
 }
 
@@ -867,7 +905,7 @@ function createWarmupImageMarkup(warmup) {
     return `
       <div class="detail-image-frame">
         <img class="detail-image" src="${warmup.image_preview_url}" alt="${
-        warmup.name ? `Bild zu ${warmup.name}` : "Aufwärmbild"
+        warmup.name ? `Skizze zu ${warmup.name}` : "Aufwärmskizze"
     }" />
         <div class="detail-image-caption">
           ${warmup.image_name || "Bildvorschau"}
@@ -880,7 +918,7 @@ function createWarmupImageMarkup(warmup) {
     return createMediaPlaceholder(warmup.image_name);
   }
 
-  return createMediaPlaceholder("Kein Bild hinterlegt");
+  return createMediaPlaceholder("Keine Skizze hinterlegt");
 }
 
 function createExerciseImageMarkup(exercise) {
@@ -897,6 +935,26 @@ function createExerciseImageMarkup(exercise) {
     `;
   }
 
+  function createTrainingSketchMarkup(training) {
+    if (isImageDataUrl(training.sketch_preview_url)) {
+      return `
+      <div class="detail-image-frame detail-image-frame--training-extra">
+        <img
+          class="detail-image detail-image--training-extra"
+          src="${training.sketch_preview_url}"
+          alt="Zusätzliche Skizze zum Training"
+        />
+      </div>
+    `;
+    }
+
+    if (training.sketch_file_name) {
+      return `<div class="detail-file-box">Zusätzliche Datei hinterlegt.</div>`;
+    }
+
+    return "";
+  }
+
   if (exercise.sketch_file_name) {
     return createMediaPlaceholder(exercise.sketch_file_name);
   }
@@ -909,10 +967,12 @@ function renderTrainingDetail() {
   const editable = canEditTraining(training, state.detailSourceView);
   const isAdmin = state.currentUser && normalizeRole(state.currentUser.role) === "admin";
 
+  detailPrintBtn.classList.toggle("is-hidden", !training);
   detailEditBtn.classList.toggle("is-hidden", !editable);
   detailDeleteBtn.classList.toggle("is-hidden", !(isAdmin && training));
 
   if (!training) {
+    detailPrintBtn.classList.add("is-hidden");
     detailDeleteBtn.classList.add("is-hidden");
     trainingDetailTitle.textContent = "Training nicht gefunden";
     trainingDetailSubtitle.textContent = "Die ausgewählte Trainingseinheit konnte nicht geladen werden.";
@@ -929,14 +989,47 @@ function renderTrainingDetail() {
       ? "Detailansicht eines Mustertrainings"
       : "Detailansicht einer Trainingseinheit";
 
-  trainingDetailMeta.innerHTML = [
-    createDetailMetaItem("Name", training.title),
-    createDetailMetaItem("Datum", training.dateLabel),
-    createDetailMetaItem("Spieleranzahl", training.required_players || "—"),
-    createDetailMetaItem("Altersgruppe", training.age_group || "—"),
-    createDetailMetaItem("Dauer", training.duration ? `${training.duration} min` : "—"),
-    createDetailMetaItem("Ersteller", training.created_by_username || "—")
-  ].join("");
+  const hasTrainingSketch = Boolean(training.sketch_file_name || training.sketch_preview_url);
+  const hasTrainingNotes = Boolean(String(training.notes || "").trim());
+
+  const overviewExtraHtml =
+      hasTrainingSketch || hasTrainingNotes
+          ? `
+          <div class="detail-overview-extra">
+            ${
+              hasTrainingNotes
+                  ? `
+                      <div class="detail-overview-extra__block">
+                        <span class="detail-meta-item__label">Notizen</span>
+                        <p class="detail-text">${training.notes}</p>
+                      </div>
+                    `
+                  : ""
+          }
+
+            ${
+              hasTrainingSketch
+                  ? `
+                      <div class="detail-overview-extra__block detail-overview-extra__media">
+                        <span class="detail-meta-item__label">Zusätzliche Skizze</span>
+                        ${createTrainingSketchMarkup(training)}
+                      </div>
+                    `
+                  : ""
+          }
+          </div>
+        `
+          : "";
+
+  trainingDetailMeta.innerHTML =
+      [
+        createDetailMetaItem("Name", training.title),
+        createDetailMetaItem("Datum", training.dateLabel),
+        createDetailMetaItem("Spieleranzahl", training.required_players || "—"),
+        createDetailMetaItem("Altersgruppe", training.age_group || "—"),
+        createDetailMetaItem("Dauer", training.duration ? `${training.duration} min` : "—"),
+        createDetailMetaItem("Ersteller", training.created_by_username || "—")
+      ].join("") + overviewExtraHtml;
 
   const warmup = training.warmup;
 
@@ -966,7 +1059,7 @@ function renderTrainingDetail() {
             </div>
           </div>
           <div class="detail-split__media">
-            <span class="detail-meta-item__label">Bild</span>
+            <span class="detail-meta-item__label">Skizze</span>
             ${createWarmupImageMarkup(warmup)}
           </div>
         </div>
@@ -1012,7 +1105,7 @@ function renderTrainingDetail() {
                     </div>
                   </div>
                   <div class="detail-split__media">
-                    <span class="detail-meta-item__label">Skizze / Bild</span>
+                    <span class="detail-meta-item__label">Skizze</span>
                     ${createExerciseImageMarkup(exercise)}
                   </div>
                 </div>
@@ -1026,41 +1119,11 @@ function renderTrainingDetail() {
     trainingDetailExercises.innerHTML = `<div class="detail-empty">Keine Übungen hinterlegt.</div>`;
   }
 
-  if (training.sketch_file_name) {
-    trainingDetailSketch.innerHTML = `
-      <div class="detail-sketch-stack">
-        <div class="detail-file-box">
-          Hinterlegte Datei: <strong>${training.sketch_file_name}</strong>
-        </div>
-        <a
-          href="https://ft-graphics.fussballtraining.com/"
-          target="_blank"
-          rel="noopener noreferrer"
-          class="btn btn--outline-primary detail-sketch-link"
-        >
-          Zeichenprogramm
-        </a>
-      </div>
-    `;
-  } else {
-    trainingDetailSketch.innerHTML = `
-      <div class="detail-sketch-stack">
-        <div class="detail-empty">Keine Skizze oder Datei hinterlegt.</div>
-        <a
-          href="https://ft-graphics.fussballtraining.com/"
-          target="_blank"
-          rel="noopener noreferrer"
-          class="btn btn--outline-primary detail-sketch-link"
-        >
-          Zeichenprogramm
-        </a>
-      </div>
-    `;
-  }
+  trainingDetailSketch.parentElement.classList.add("is-hidden");
+  trainingDetailNotes.parentElement.classList.add("is-hidden");
 
-  trainingDetailNotes.innerHTML = training.notes
-      ? `<p class="detail-text">${training.notes}</p>`
-      : `<div class="detail-empty">Keine Notizen vorhanden.</div>`;
+  trainingDetailSketch.innerHTML = "";
+  trainingDetailNotes.innerHTML = "";
 }
 
 function renderTable() {
@@ -1092,7 +1155,7 @@ function renderTable() {
             <span class="mt-indicator ${
             training.is_template ? "mt-indicator--active" : "mt-indicator--inactive"
         }">
-              ${training.is_template ? "✓" : "–"}
+              ${training.is_template ? "X" : "–"}
             </span>
           </td>
           <td><span class="category-pill">${training.age_group}</span></td>
@@ -1108,7 +1171,7 @@ function renderTable() {
           <th>Name</th>
           <th>Datum</th>
           <th>Spieler</th>
-          <th>MT</th>
+          <th>Mustertraining</th>
           <th>Kategorie</th>
         </tr>
       </thead>
@@ -1382,7 +1445,7 @@ function useWarmupLibraryEntry(entry) {
       warmupUploadTitle,
       warmupUploadSubtitle,
       entry.image_name || "",
-      "Bild hochladen",
+      "Skizze hochladen",
       "PNG oder JPG bis 5MB",
       entry.image_preview_url || ""
   );
@@ -1557,6 +1620,59 @@ function setUploadBoxExistingFile(box, titleEl, subtitleEl, fileName, defaultTit
 }
 
 function attachUploadBox(box, input, titleEl, subtitleEl, defaultTitle, defaultSubtitle) {
+  function showSelectedFile(file) {
+    box.classList.add("has-file");
+    box.classList.remove("is-dragover");
+    box.dataset.existingFileName = file.name;
+    box.dataset.existingPreviewUrl = "";
+    titleEl.textContent = file.name;
+    subtitleEl.textContent = `Datei ausgewählt • ${(file.size / 1024 / 1024).toFixed(2)} MB`;
+  }
+
+  function resetToDefaultOrExisting() {
+    const existingFileName = box.dataset.existingFileName || "";
+    const existingPreviewUrl = box.dataset.existingPreviewUrl || "";
+
+    if (existingFileName) {
+      setUploadBoxExistingFile(
+          box,
+          titleEl,
+          subtitleEl,
+          existingFileName,
+          defaultTitle,
+          defaultSubtitle,
+          existingPreviewUrl
+      );
+      return;
+    }
+
+    resetUploadBox(box, titleEl, subtitleEl, defaultTitle, defaultSubtitle);
+  }
+
+  function isAllowedFile(file) {
+    const accept = input.accept
+        .split(",")
+        .map((item) => item.trim().toLowerCase())
+        .filter(Boolean);
+
+    if (accept.length === 0) return true;
+
+    const fileName = file.name.toLowerCase();
+    const fileType = file.type.toLowerCase();
+
+    return accept.some((acceptedType) => {
+      if (acceptedType.startsWith(".")) {
+        return fileName.endsWith(acceptedType);
+      }
+
+      if (acceptedType.endsWith("/*")) {
+        return fileType.startsWith(acceptedType.replace("/*", "/"));
+      }
+
+      return fileType === acceptedType;
+    });
+  }
+
   box.addEventListener("click", () => {
     input.click();
   });
@@ -1565,31 +1681,45 @@ function attachUploadBox(box, input, titleEl, subtitleEl, defaultTitle, defaultS
     const file = input.files?.[0];
 
     if (!file) {
-      const existingFileName = box.dataset.existingFileName || "";
-      const existingPreviewUrl = box.dataset.existingPreviewUrl || "";
-
-      if (existingFileName) {
-        setUploadBoxExistingFile(
-            box,
-            titleEl,
-            subtitleEl,
-            existingFileName,
-            defaultTitle,
-            defaultSubtitle,
-            existingPreviewUrl
-        );
-        return;
-      }
-
-      resetUploadBox(box, titleEl, subtitleEl, defaultTitle, defaultSubtitle);
+      resetToDefaultOrExisting();
       return;
     }
 
-    box.classList.add("has-file");
-    box.dataset.existingFileName = file.name;
-    box.dataset.existingPreviewUrl = "";
-    titleEl.textContent = file.name;
-    subtitleEl.textContent = `Datei ausgewählt • ${(file.size / 1024 / 1024).toFixed(2)} MB`;
+    showSelectedFile(file);
+  });
+
+  box.addEventListener("dragenter", (event) => {
+    event.preventDefault();
+    box.classList.add("is-dragover");
+  });
+
+  box.addEventListener("dragover", (event) => {
+    event.preventDefault();
+    box.classList.add("is-dragover");
+  });
+
+  box.addEventListener("dragleave", () => {
+    box.classList.remove("is-dragover");
+  });
+
+  box.addEventListener("drop", (event) => {
+    event.preventDefault();
+    box.classList.remove("is-dragover");
+
+    const file = event.dataTransfer?.files?.[0];
+
+    if (!file) return;
+
+    if (!isAllowedFile(file)) {
+      alert("Dieser Dateityp ist nicht erlaubt.");
+      return;
+    }
+
+    const dataTransfer = new DataTransfer();
+    dataTransfer.items.add(file);
+    input.files = dataTransfer.files;
+
+    showSelectedFile(file);
   });
 }
 
@@ -1606,7 +1736,7 @@ function attachExerciseUploadBox(block) {
       input,
       titleEl,
       subtitleEl,
-      "Skizze oder Bild hochladen",
+      "Skizze hochladen",
       "PNG, JPG oder PDF bis 5MB"
   );
 }
@@ -1655,11 +1785,11 @@ function createExerciseBlock(exerciseData = null) {
     </label>
 
     <div class="field">
-      <span class="field__label">Skizze / Bild zur Übung hochladen</span>
+      <span class="field__label">Skizze zur Übung hochladen</span>
       <input class="visually-hidden exercise-sketch-input" type="file" accept=".png,.jpg,.jpeg,.pdf" />
       <button class="upload-box exercise-upload-box" type="button">
         <span class="upload-box__icon">⇪</span>
-        <span class="upload-box__title exercise-upload-title">Skizze oder Bild hochladen</span>
+        <span class="upload-box__title exercise-upload-title">Skizze hochladen</span>
         <span class="upload-box__subtitle exercise-upload-subtitle">PNG, JPG oder PDF bis 5MB</span>
       </button>
     </div>
@@ -1685,7 +1815,7 @@ function createExerciseBlock(exerciseData = null) {
         titleEl,
         subtitleEl,
         exerciseData.sketch_file_name || "",
-        "Skizze oder Bild hochladen",
+        "Skizze hochladen",
         "PNG, JPG oder PDF bis 5MB",
         exerciseData.sketch_preview_url || ""
     );
@@ -1725,7 +1855,7 @@ function resetTrainingCreateForm() {
   warmupImageInput.value = "";
   sketchInput.value = "";
 
-  resetUploadBox(warmupUploadBox, warmupUploadTitle, warmupUploadSubtitle, "Bild hochladen", "PNG oder JPG bis 5MB");
+  resetUploadBox(warmupUploadBox, warmupUploadTitle, warmupUploadSubtitle, "Skizze hochladen", "PNG oder JPG bis 5MB");
   resetUploadBox(
       sketchUploadBox,
       sketchUploadTitle,
@@ -1759,13 +1889,13 @@ function populateTrainingFormForEdit(training) {
   }
 
   setUploadBoxExistingFile(
-      warmupUploadBox,
-      warmupUploadTitle,
-      warmupUploadSubtitle,
-      training.warmup?.image_name || "",
-      "Bild hochladen",
-      "PNG oder JPG bis 5MB",
-      training.warmup?.image_preview_url || ""
+      sketchUploadBox,
+      sketchUploadTitle,
+      sketchUploadSubtitle,
+      training.sketch_file_name || "",
+      "Datei hier ablegen oder klicken zum Hochladen",
+      "PNG, JPG oder PDF bis 5MB",
+      training.sketch_preview_url || ""
   );
 
   setUploadBoxExistingFile(
@@ -2171,6 +2301,24 @@ function bindEvents() {
     await loadAll();
   });
 
+  detailPrintBtn.addEventListener("click", () => {
+    const training = getSelectedTraining();
+
+    if (!training) {
+      alert("Kein Training ausgewählt.");
+      return;
+    }
+
+    const previousTitle = document.title;
+    document.title = `Training - ${training.title}`;
+
+    window.print();
+
+    setTimeout(() => {
+      document.title = previousTitle;
+    }, 1000);
+  });
+
   detailEditBtn.addEventListener("click", () => {
     openTrainingEditView();
   });
@@ -2325,6 +2473,16 @@ function bindEvents() {
 
     let warmupPreviewUrl = warmupUploadBox.dataset.existingPreviewUrl || "";
 
+    let trainingSketchPreviewUrl = sketchUploadBox.dataset.existingPreviewUrl || "";
+
+    if (sketchFile && sketchFile.type.startsWith("image/")) {
+      trainingSketchPreviewUrl = await readFileAsDataUrl(sketchFile);
+    }
+
+    if (sketchFile && !sketchFile.type.startsWith("image/")) {
+      trainingSketchPreviewUrl = "";
+    }
+
     if (warmupFile && warmupFile.type.startsWith("image/")) {
       warmupPreviewUrl = await readFileAsDataUrl(warmupFile);
     }
@@ -2352,6 +2510,7 @@ function bindEvents() {
       },
       exercises: collectedExercises,
       sketch_file_name: sketchFile ? sketchFile.name : sketchUploadBox.dataset.existingFileName || "",
+      sketch_preview_url: trainingSketchPreviewUrl,
       created_by_user_id: existingTraining?.created_by_user_id || state.currentUser.id,
       created_by_username: existingTraining?.created_by_username || state.currentUser.username,
       created_at: existingTraining?.created_at || null
@@ -2393,7 +2552,7 @@ function bindEvents() {
       warmupImageInput,
       warmupUploadTitle,
       warmupUploadSubtitle,
-      "Bild hochladen",
+      "Skizze hochladen",
       "PNG oder JPG bis 5MB"
   );
 

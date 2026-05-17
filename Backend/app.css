@@ -398,6 +398,45 @@ button {
     gap: 10px;
 }
 
+.btn--drawing,
+.btn--drawing:visited {
+    background: #2e8b57;
+    border-color: #2e8b57;
+    color: #ffffff;
+    text-decoration: none;
+}
+
+.btn--drawing:hover {
+    background: #267247;
+    border-color: #267247;
+    color: #ffffff;
+    text-decoration: none;
+}
+
+.btn,
+.btn:visited {
+    text-decoration: none;
+}
+
+.btn--primary,
+.btn--primary:visited {
+    color: #fff;
+}
+
+.btn--secondary,
+.btn--secondary:visited {
+    color: #1f2937;
+}
+
+.btn--outline-primary,
+.btn--outline-primary:visited {
+    color: var(--primary);
+}
+
+.btn:hover {
+    text-decoration: none;
+}
+
 .btn--full {
     width: 100%;
 }
@@ -812,8 +851,8 @@ button {
 
 .detail-split {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 360px;
-    gap: 24px;
+    grid-template-columns: minmax(0, 1fr) 620px;
+    gap: 28px;
     align-items: start;
 }
 
@@ -831,22 +870,23 @@ button {
 }
 
 .detail-image-frame {
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    background: #ffffff;
-    padding: 12px;
-    display: grid;
-    gap: 10px;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    padding: 0 !important;
+    display: block !important;
+    overflow: visible !important;
 }
 
 .detail-image {
     display: block;
     width: 100%;
-    height: 260px;
+    height: auto;
+    max-height: 520px;
     object-fit: contain;
-    border-radius: 8px;
-    border: 1px solid var(--border-soft);
-    background: #f8fbfd;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
 }
 
 .detail-image-caption {
@@ -854,6 +894,10 @@ button {
     color: #607487;
     line-height: 1.4;
     word-break: break-word;
+}
+
+.detail-image-caption {
+    display: none;
 }
 
 .detail-media-placeholder {
@@ -1149,6 +1193,11 @@ button {
     background: #f8fbfd;
 }
 
+.upload-box.is-dragover {
+    border-color: var(--primary);
+    background: #eef7ff;
+}
+
 .upload-box--large {
     min-height: 220px;
 }
@@ -1326,5 +1375,259 @@ button {
 
     .detail-media-placeholder {
         min-height: 220px;
+    }
+}
+
+
+/* PRINT MUSS AUSSERHALB VON @media (max-width: 700px) STEHEN */
+@media print {
+    @page {
+        size: A4 portrait;
+        margin: 8mm;
+    }
+
+    html,
+    body {
+        margin: 0 !important;
+        padding: 0 !important;
+        background: #ffffff !important;
+    }
+
+    body * {
+        visibility: hidden !important;
+    }
+
+    #training-detail-view,
+    #training-detail-view * {
+        visibility: visible !important;
+    }
+
+    #training-detail-view {
+        display: block !important;
+        position: absolute !important;
+        left: 0 !important;
+        top: 0 !important;
+        width: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        background: #ffffff !important;
+    }
+
+    #back-from-detail-btn,
+    .link-back,
+    .page-toolbar,
+    #detail-print-btn,
+    #detail-edit-btn,
+    #detail-delete-btn {
+        display: none !important;
+        visibility: hidden !important;
+    }
+
+    .page-header {
+        margin: 0 0 10mm !important;
+    }
+
+    .page-header h2 {
+        font-size: 24pt !important;
+        margin: 0 0 3mm !important;
+    }
+
+    .page-header p {
+        display: none !important;
+    }
+
+    .card,
+    .detail-overview-card,
+    .detail-section-card,
+    .detail-card {
+        box-shadow: none !important;
+        border: 1px solid #cccccc !important;
+        background: #ffffff !important;
+    }
+
+    .detail-overview-card {
+        padding: 8mm !important;
+        margin-bottom: 0 !important;
+        break-after: page;
+        page-break-after: always;
+    }
+
+    .detail-section-card {
+        padding: 0 !important;
+        margin: 0 !important;
+        border: 0 !important;
+        box-shadow: none !important;
+    }
+
+    .detail-section-title {
+        font-size: 18pt !important;
+        margin: 0 0 6mm !important;
+    }
+
+    .detail-stack {
+        display: block !important;
+    }
+
+    #training-detail-warmup .detail-card {
+        break-after: page;
+        page-break-after: always;
+    }
+
+    #training-detail-exercises .detail-card {
+        break-after: page;
+        page-break-after: always;
+    }
+
+    /* Abschnittsüberschriften im Druck sparen Platz */
+    #training-detail-view .detail-section-title {
+        display: none !important;
+    }
+
+    /* Aufwärmen und jede Übung auf eigener Seite beginnen */
+    #training-detail-warmup .detail-card,
+    #training-detail-exercises .detail-card {
+        break-before: page;
+        page-break-before: always;
+
+        break-after: page;
+        page-break-after: always;
+
+        break-inside: avoid-page;
+        page-break-inside: avoid;
+
+        padding: 5mm !important;
+        margin: 0 !important;
+
+        font-size: 9.5pt !important;
+        line-height: 1.25 !important;
+    }
+
+    /* Erste Inhaltsseite nicht unnötig leer machen */
+    #training-detail-warmup .detail-card:first-child {
+        break-before: auto;
+        page-break-before: auto;
+    }
+
+    /* Layout im Druck: Text bleibt gleich groß, Bild bekommt mehr Platz */
+    .detail-split {
+        display: grid !important;
+        grid-template-columns: minmax(0, 1fr) 82mm !important;
+        gap: 6mm !important;
+        align-items: start !important;
+    }
+
+    .detail-split__media {
+        width: 100% !important;
+        align-self: start !important;
+    }
+
+    .detail-split__content {
+        gap: 3mm !important;
+    }
+
+    .detail-inline-grid,
+    .detail-inline-grid--2 {
+        gap: 3mm !important;
+    }
+
+    .detail-card__title {
+        font-size: 13pt !important;
+        margin-bottom: 4mm !important;
+    }
+
+    .detail-meta-item__label {
+        font-size: 8.5pt !important;
+        margin-bottom: 1mm !important;
+    }
+
+    .detail-meta-item__value {
+        font-size: 9.5pt !important;
+    }
+
+    .detail-text {
+        font-size: 9.5pt !important;
+        line-height: 1.25 !important;
+        margin: 0 !important;
+    }
+
+    /* Bild groß anzeigen, ohne Rahmen und ohne Dateiname */
+    .detail-image-frame {
+        border: 0 !important;
+        border-radius: 0 !important;
+        background: transparent !important;
+        padding: 0 !important;
+        display: block !important;
+        overflow: visible !important;
+    }
+
+    .detail-image {
+        display: block !important;
+        width: 100% !important;
+        height: auto !important;
+        max-height: 115mm !important;
+        object-fit: contain !important;
+        border: 0 !important;
+        border-radius: 0 !important;
+        background: transparent !important;
+    }
+
+    .detail-image-caption {
+        display: none !important;
+    }
+
+    .detail-media-placeholder {
+        min-height: 30mm !important;
+        font-size: 8.5pt !important;
+        padding: 3mm !important;
+    }
+
+    .detail-overview-extra {
+        grid-column: 1 / -1 !important;
+        display: grid !important;
+        grid-template-columns: 1fr 58mm !important;
+        gap: 5mm !important;
+        margin-top: 4mm !important;
+        padding-top: 4mm !important;
+        border-top: 1px solid #cccccc !important;
+    }
+
+    .detail-overview-extra .detail-text {
+        font-size: 9.5pt !important;
+        line-height: 1.25 !important;
+    }
+
+    .detail-overview-extra__media .detail-image {
+        width: 100% !important;
+        height: auto !important;
+        max-height: 60mm !important;
+        object-fit: contain !important;
+    }
+}
+
+.detail-overview-extra {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 360px;
+    gap: 18px;
+    margin-top: 12px;
+    padding-top: 18px;
+    border-top: 1px solid var(--border-soft);
+}
+
+.detail-overview-extra__block {
+    min-width: 0;
+}
+
+.detail-overview-extra__media .detail-image {
+    height: 220px;
+}
+
+.detail-overview-extra__media .detail-image-caption {
+    display: none;
+}
+
+@media (max-width: 900px) {
+    .detail-overview-extra {
+        grid-template-columns: 1fr;
     }
 }

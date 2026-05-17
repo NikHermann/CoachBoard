@@ -127,23 +127,27 @@
 
     <nav class="sidebar__nav">
       <button class="nav-link is-active" type="button" data-view="library">
-        <span class="nav-link__icon">⌂</span>
+        <span class="nav-link__icon">🗂️</span>
         Bibliothek
       </button>
+
       <button class="nav-link" type="button" data-view="my-trainings">
-        <span class="nav-link__icon">▤</span>
+        <span class="nav-link__icon">📋</span>
         Meine Trainings
       </button>
+
       <button class="nav-link" type="button" data-view="template-trainings">
-        <span class="nav-link__icon">▣</span>
+        <span class="nav-link__icon">⭐</span>
         Mustertrainings
       </button>
+
       <button class="nav-link" type="button" data-view="exercises">
-        <span class="nav-link__icon">◎</span>
-        Exercises
+        <span class="nav-link__icon">⚽</span>
+        Übungen
       </button>
+
       <button class="nav-link" type="button" data-view="profile">
-        <span class="nav-link__icon">◌</span>
+        <span class="nav-link__icon">⚙️</span>
         Profil
       </button>
     </nav>
@@ -231,14 +235,14 @@
 
       <section id="exercises-view" class="view-section">
         <header class="page-header">
-          <h2>Exercises</h2>
+          <h2>Übungen</h2>
           <p>Suche nach einzelnen Aufwärmformen und Übungen aus bestehenden Trainings.</p>
         </header>
 
         <section class="card filter-card">
           <div class="section-heading">
             <span class="section-heading__icon">⌕</span>
-            <h3>Exercises filtern</h3>
+            <h3>Übungen filtern</h3>
           </div>
 
           <div class="filters-grid filters-grid--exercises">
@@ -289,7 +293,7 @@
         <section id="exercises-stats-grid" class="card stats-card"></section>
 
         <section class="table-block">
-          <h3 class="table-block__title">Gefundene Exercises</h3>
+          <h3 class="table-block__title">Gefundene Übungen</h3>
           <p class="table-block__hint">
             Klick auf einen Eintrag öffnet das zugehörige Training in der Detailansicht.
           </p>
@@ -307,11 +311,16 @@
         </header>
 
         <div class="page-toolbar">
-          <button id="detail-delete-btn" class="btn btn--secondary is-hidden" type="button">
-            Training löschen
+          <button id="detail-print-btn" class="btn btn--secondary is-hidden" type="button">
+            Als PDF drucken
           </button>
+
           <button id="detail-edit-btn" class="btn btn--primary is-hidden" type="button">
             Bearbeiten
+          </button>
+
+          <button id="detail-delete-btn" class="btn btn--secondary is-hidden" type="button">
+            Training löschen
           </button>
         </div>
 
@@ -330,7 +339,7 @@
         </section>
 
         <section class="card detail-section-card">
-          <h3 class="detail-section-title">Skizze / Bild</h3>
+          <h3 class="detail-section-title">Skizze</h3>
           <div id="training-detail-sketch"></div>
         </section>
 
@@ -491,7 +500,7 @@
             </div>
 
             <div class="field">
-              <span class="field__label">Bild zur Aufwärmübung hochladen</span>
+              <span class="field__label">Skizze zur Aufwärmübung hochladen</span>
               <input
                       id="warmup-image-input"
                       class="visually-hidden"
@@ -500,7 +509,7 @@
               />
               <button id="warmup-upload-box" class="upload-box" type="button">
                 <span class="upload-box__icon">⇪</span>
-                <span id="warmup-upload-title" class="upload-box__title">Bild hochladen</span>
+                <span id="warmup-upload-title" class="upload-box__title">Skizze hochladen</span>
                 <span id="warmup-upload-subtitle" class="upload-box__subtitle">PNG oder JPG bis 5MB</span>
               </button>
             </div>
@@ -546,7 +555,7 @@
           </section>
 
           <section class="editor-card">
-            <h3 class="editor-card__title">Skizze / Bild</h3>
+            <h3 class="editor-card__title">Skizze</h3>
 
             <div class="field">
               <input
@@ -558,12 +567,23 @@
               <button id="sketch-upload-box" class="upload-box upload-box--large" type="button">
                 <span class="upload-box__icon">⇪</span>
                 <span id="sketch-upload-title" class="upload-box__title">
-                      Datei hier ablegen oder klicken zum Hochladen
-                    </span>
+            Datei hier ablegen oder klicken zum Hochladen
+          </span>
                 <span id="sketch-upload-subtitle" class="upload-box__subtitle">
-                      PNG, JPG oder PDF bis 5MB
-                    </span>
+            PNG, JPG oder PDF bis 5MB
+          </span>
               </button>
+            </div>
+
+            <div class="exercise-actions" style="margin-top: 16px;">
+              <a
+                      href="https://ft-graphics.fussballtraining.com/"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      class="btn btn--drawing"
+              >
+                Zeichenprogramm öffnen
+              </a>
             </div>
           </section>
 
