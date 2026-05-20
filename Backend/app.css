@@ -1642,3 +1642,66 @@ button {
     border-color: #b91c1c !important;
     color: #ffffff !important;
 }
+.legal-card {
+    max-width: 900px;
+}
+
+.legal-text {
+    display: grid;
+    gap: 18px;
+    color: var(--text);
+    line-height: 1.6;
+}
+
+.legal-text h3 {
+    margin: 18px 0 0;
+    font-size: 18px;
+    color: var(--text);
+}
+
+.legal-text p {
+    margin: 0;
+}
+
+.legal-text a {
+    color: var(--primary);
+    text-decoration: none;
+}
+
+.legal-text a:hover {
+    text-decoration: underline;
+}
+
+.legal-updated {
+    margin-top: 24px !important;
+    color: var(--muted);
+    font-size: 14px;
+}
+
+.topbar-legal-links {
+    display: grid;
+    gap: 4px;
+    margin-right: 12px;
+    text-align: right;
+}
+
+.topbar-legal-link {
+    border: 0;
+    background: transparent;
+    padding: 0;
+    color: var(--muted);
+    font-size: 13px;
+    font-weight: 500;
+    text-align: right;
+    line-height: 1.25;
+}
+
+.topbar-legal-link:hover {
+    color: var(--primary);
+    text-decoration: underline;
+}
+
+.topbar-legal-link.is-active {
+    color: var(--primary);
+    font-weight: 700;
+}

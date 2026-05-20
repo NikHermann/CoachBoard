@@ -17,6 +17,39 @@ function normalizeRole(role) {
   return "spieler";
 }
 
+function getUsernameValidationError(username) {
+  const value = String(username || "").trim();
+
+  if (!value) {
+    return "Der Benutzername darf nicht leer sein.";
+  }
+
+  if (/\s/.test(value)) {
+    return "Der Benutzername darf keine Leerzeichen enthalten.";
+  }
+
+  return "";
+}
+
+function getPasswordValidationError(password) {
+  const value = String(password || "");
+
+  if (value.length < 8) {
+    return "Das Passwort muss mindestens 8 Zeichen lang sein.";
+  }
+
+  const hasNumber = /\d/.test(value);
+  const hasUppercase = /[A-ZÄÖÜ]/.test(value);
+  const hasSpecialChar = /[^A-Za-zÄÖÜäöüß0-9\s]/.test(value);
+  const fulfilledRules = [hasNumber, hasUppercase, hasSpecialChar].filter(Boolean).length;
+
+  if (fulfilledRules < 2) {
+    return "Das Passwort muss mindestens 2 von 3 Kriterien erfüllen: Zahl, Sonderzeichen, Großbuchstabe.";
+  }
+
+  return "";
+}
+
 function normalizeUser(userDoc) {
   const data = userDoc.data();
 
@@ -49,6 +82,18 @@ export async function createUser(reloadUsers, userData = null) {
       return null;
     }
 
+    const usernameError = getUsernameValidationError(username);
+    if (usernameError) {
+      alert(usernameError);
+      return null;
+    }
+
+    const passwordError = getPasswordValidationError(password);
+    if (passwordError) {
+      alert(passwordError);
+      return null;
+    }
+
     try {
       const docRef = await addDoc(collection(db, "users"), {
         username,
@@ -75,16 +120,28 @@ export async function createUser(reloadUsers, userData = null) {
     }
   }
 
-  const username = prompt("Benutzername:");
+  const username = String(prompt("Benutzername:") || "").trim();
   if (!username) return null;
 
-  const club = prompt("Verein/Club:");
+  const club = String(prompt("Verein/Club:") || "").trim();
   if (!club) return null;
 
   const role = normalizeRole(prompt("Rolle (spieler / trainer / admin):"));
   if (!role) return null;
 
-  const password = prompt("Passwort:") || "";
+  const password = String(prompt("Passwort:") || "").trim();
+
+  const usernameError = getUsernameValidationError(username);
+  if (usernameError) {
+    alert(usernameError);
+    return null;
+  }
+
+  const passwordError = getPasswordValidationError(password);
+  if (passwordError) {
+    alert(passwordError);
+    return null;
+  }
 
   try {
     const docRef = await addDoc(collection(db, "users"), {
@@ -118,7 +175,9 @@ export async function updateUserProfile(userId, updates, reloadUsers) {
     return null;
   }
 
-  const username = String(updates?.username || "").trim();
+  const username = updates?.username !== undefined
+      ? String(updates.username || "").trim()
+      : undefined;
   const club = updates?.club !== undefined
       ? String(updates.club || "").trim()
       : undefined;
@@ -127,9 +186,12 @@ export async function updateUserProfile(userId, updates, reloadUsers) {
       : undefined;
   const role = updates?.role ? normalizeRole(updates.role) : undefined;
 
-  if (!username) {
-    alert("Der Benutzername darf nicht leer sein.");
-    return null;
+  if (username !== undefined) {
+    const usernameError = getUsernameValidationError(username);
+    if (usernameError) {
+      alert(usernameError);
+      return null;
+    }
   }
 
   if (club !== undefined && !club) {
@@ -137,9 +199,19 @@ export async function updateUserProfile(userId, updates, reloadUsers) {
     return null;
   }
 
-  const updatePayload = {
-    username
-  };
+  if (password !== undefined) {
+    const passwordError = getPasswordValidationError(password);
+    if (passwordError) {
+      alert(passwordError);
+      return null;
+    }
+  }
+
+  const updatePayload = {};
+
+  if (username !== undefined) {
+    updatePayload.username = username;
+  }
 
   if (club !== undefined) {
     updatePayload.club = club;
@@ -151,6 +223,11 @@ export async function updateUserProfile(userId, updates, reloadUsers) {
 
   if (role !== undefined) {
     updatePayload.role = role;
+  }
+
+  if (Object.keys(updatePayload).length === 0) {
+    alert("Es wurden keine Änderungen angegeben.");
+    return null;
   }
 
   try {

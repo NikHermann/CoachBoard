@@ -28,6 +28,8 @@ const ROUTE_PATHS = {
   exercises: "/exercises",
   "user-management": "/benutzer",
   profile: "/profil",
+  impressum: "/impressum",
+  terms: "/nutzungsbedingungen",
   "username-edit": "/profil/benutzername",
   "password-edit": "/profil/passwort",
   "training-create": "/training/neu"
@@ -94,6 +96,16 @@ function applyBrowserRoute() {
 
   if (path === "/profil") {
     state.activeView = "profile";
+    return;
+  }
+
+  if (path === "/impressum") {
+    state.activeView = "impressum";
+    return;
+  }
+
+  if (path === "/nutzungsbedingungen") {
+    state.activeView = "terms";
     return;
   }
 
@@ -172,6 +184,8 @@ const userManagementView = document.getElementById("user-management-view");
 const trainingDetailView = document.getElementById("training-detail-view");
 const trainingCreateView = document.getElementById("training-create-view");
 const profileView = document.getElementById("profile-view");
+const impressumView = document.getElementById("impressum-view");
+const termsView = document.getElementById("terms-view");
 const usernameEditView = document.getElementById("username-edit-view");
 const passwordEditView = document.getElementById("password-edit-view");
 
@@ -310,6 +324,39 @@ function getInitials(name) {
   return `${parts[0][0] || ""}${parts[1][0] || ""}`.toUpperCase();
 }
 
+function getUsernameValidationError(username) {
+  const value = String(username || "").trim();
+
+  if (!value) {
+    return "Der Benutzername darf nicht leer sein.";
+  }
+
+  if (/\s/.test(value)) {
+    return "Der Benutzername darf keine Leerzeichen enthalten.";
+  }
+
+  return "";
+}
+
+function getPasswordValidationError(password) {
+  const value = String(password || "");
+
+  if (value.length < 8) {
+    return "Das Passwort muss mindestens 8 Zeichen lang sein.";
+  }
+
+  const hasNumber = /\d/.test(value);
+  const hasUppercase = /[A-ZÄÖÜ]/.test(value);
+  const hasSpecialChar = /[^A-Za-zÄÖÜäöüß0-9\s]/.test(value);
+  const fulfilledRules = [hasNumber, hasUppercase, hasSpecialChar].filter(Boolean).length;
+
+  if (fulfilledRules < 2) {
+    return "Das Passwort muss mindestens 2 von 3 Kriterien erfüllen: Zahl, Sonderzeichen, Großbuchstabe.";
+  }
+
+  return "";
+}
+
 function formatDate(value) {
   if (!value) return "—";
 
@@ -445,11 +492,14 @@ function showApp() {
 function setCurrentUser(user) {
   state.currentUser = user || null;
 
+  // Alte dauerhafte Anmeldung entfernen, damit der Login nur pro Browser-Sitzung gilt.
+  localStorage.removeItem(STORAGE_KEY);
+
   if (state.currentUser) {
-    localStorage.setItem(STORAGE_KEY, state.currentUser.id);
+    sessionStorage.setItem(STORAGE_KEY, state.currentUser.id);
     showApp();
   } else {
-    localStorage.removeItem(STORAGE_KEY);
+    sessionStorage.removeItem(STORAGE_KEY);
     showAuth();
   }
 
@@ -458,7 +508,10 @@ function setCurrentUser(user) {
 }
 
 function syncCurrentUserFromStorage() {
-  const savedUserId = localStorage.getItem(STORAGE_KEY);
+  // Falls von einer älteren Version noch ein Login in localStorage liegt, wird er entfernt.
+  localStorage.removeItem(STORAGE_KEY);
+
+  const savedUserId = sessionStorage.getItem(STORAGE_KEY);
 
   if (!savedUserId) {
     state.currentUser = null;
@@ -473,6 +526,7 @@ function syncCurrentUserFromStorage() {
   if (matchedUser) {
     showApp();
   } else {
+    sessionStorage.removeItem(STORAGE_KEY);
     showAuth();
   }
 
@@ -1529,6 +1583,18 @@ function updatePageHeader() {
     return;
   }
 
+  if (state.activeView === "impressum") {
+    pageTitle.textContent = "Impressum";
+    pageSubtitle.textContent = "Rechtliche Angaben zum Betreiber";
+    return;
+  }
+
+  if (state.activeView === "terms") {
+    pageTitle.textContent = "Nutzungsbedingungen";
+    pageSubtitle.textContent = "Regeln für die Nutzung der Plattform";
+    return;
+  }
+
   if (state.activeView === "profile") {
     pageTitle.textContent = "Profil";
     pageSubtitle.textContent = "Benutzerdaten und Einstellungen";
@@ -1544,6 +1610,8 @@ function renderViews() {
   trainingDetailView.classList.toggle("is-active", state.activeView === "training-detail");
   trainingCreateView.classList.toggle("is-active", state.activeView === "training-create");
   profileView.classList.toggle("is-active", state.activeView === "profile");
+  impressumView?.classList.toggle("is-active", state.activeView === "impressum");
+  termsView?.classList.toggle("is-active", state.activeView === "terms");
   usernameEditView.classList.toggle("is-active", state.activeView === "username-edit");
   passwordEditView.classList.toggle("is-active", state.activeView === "password-edit");
 }
@@ -2270,6 +2338,18 @@ function bindEvents() {
       return;
     }
 
+    const usernameError = getUsernameValidationError(username);
+    if (usernameError) {
+      alert(usernameError);
+      return;
+    }
+
+    const passwordError = getPasswordValidationError(password);
+    if (passwordError) {
+      alert(passwordError);
+      return;
+    }
+
     await createUser(null, { username, club, role: "trainer", password });
     await loadAll();
 
@@ -2296,8 +2376,9 @@ function bindEvents() {
 
     const newUsername = String(usernameEditInput.value || "").trim();
 
-    if (!newUsername) {
-      alert("Der Benutzername darf nicht leer sein.");
+    const usernameError = getUsernameValidationError(newUsername);
+    if (usernameError) {
+      alert(usernameError);
       return;
     }
 
@@ -2332,13 +2413,18 @@ function bindEvents() {
       return;
     }
 
+    const passwordError = getPasswordValidationError(newPassword);
+    if (passwordError) {
+      alert(passwordError);
+      return;
+    }
+
     if (state.currentUser.password && state.currentUser.password !== currentPassword) {
       alert("Das aktuelle Passwort ist nicht korrekt.");
       return;
     }
 
     const result = await updateUserProfile(state.currentUser.id, {
-      username: state.currentUser.username,
       password: newPassword
     });
 
@@ -2360,7 +2446,6 @@ function bindEvents() {
 
     const selectedRole = normalizeRole(profileRoleSelect.value);
     const result = await updateUserProfile(state.currentUser.id, {
-      username: state.currentUser.username,
       role: selectedRole
     });
 
@@ -2389,6 +2474,18 @@ function bindEvents() {
 
       if (!username || !club || !role || !password) {
         alert("Bitte alle Felder ausfüllen.");
+        return;
+      }
+
+      const usernameError = getUsernameValidationError(username);
+      if (usernameError) {
+        alert(usernameError);
+        return;
+      }
+
+      const passwordError = getPasswordValidationError(password);
+      if (passwordError) {
+        alert(passwordError);
         return;
       }
 
@@ -2421,6 +2518,18 @@ function bindEvents() {
 
       if (!username || !club || !role || !password) {
         alert("Bitte alle Felder ausfüllen.");
+        return;
+      }
+
+      const usernameError = getUsernameValidationError(username);
+      if (usernameError) {
+        alert(usernameError);
+        return;
+      }
+
+      const passwordError = getPasswordValidationError(password);
+      if (passwordError) {
+        alert(passwordError);
         return;
       }
 
@@ -2495,12 +2604,17 @@ function bindEvents() {
         }
 
         const payload = {
-          username: user.username,
           club: selectedClub,
           role: selectedRole
         };
 
         if (newPassword) {
+          const passwordError = getPasswordValidationError(newPassword);
+          if (passwordError) {
+            alert(passwordError);
+            return;
+          }
+
           payload.password = newPassword;
         }
 
