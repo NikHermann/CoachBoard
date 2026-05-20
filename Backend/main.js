@@ -210,6 +210,7 @@ const resetExerciseFiltersBtn = document.getElementById("reset-exercise-filters-
 const trainingAgeGroup = document.getElementById("training-age-group");
 const trainingCreateForm = document.getElementById("training-create-form");
 const createTrainingBtn = document.getElementById("create-training-btn");
+const templateOptionField = document.getElementById("template-option-field");
 const addExerciseBtn = document.getElementById("add-exercise-btn");
 const exerciseBlocks = document.getElementById("exercise-blocks");
 const backToLibraryBtn = document.getElementById("back-to-library-btn");
@@ -497,6 +498,7 @@ function updateCurrentUserUI() {
     adminUserSection?.classList.add("is-hidden");
     devRoleSection?.classList.add("is-hidden");
     userManagementNav?.classList.add("is-hidden");
+    templateOptionField?.classList.add("is-hidden");
     return;
   }
 
@@ -517,6 +519,11 @@ function updateCurrentUserUI() {
   adminUserSection?.classList.toggle("is-hidden", !isAdmin);
   devRoleSection?.classList.toggle("is-hidden", !isAdmin);
   userManagementNav?.classList.toggle("is-hidden", !isAdmin);
+  templateOptionField?.classList.toggle("is-hidden", !isAdmin);
+
+  if (!isAdmin && trainingCreateForm.elements.is_template) {
+    trainingCreateForm.elements.is_template.checked = false;
+  }
 
   if (!isAdmin && state.activeView === "user-management") {
     state.activeView = "library";
@@ -1989,6 +1996,13 @@ function updateExerciseTitles() {
 
 function resetTrainingCreateForm() {
   trainingCreateForm.reset();
+
+  if (trainingCreateForm.elements.is_template) {
+    const isAdmin = state.currentUser && normalizeRole(state.currentUser.role) === "admin";
+    trainingCreateForm.elements.is_template.checked = false;
+    templateOptionField?.classList.toggle("is-hidden", !isAdmin);
+  }
+
   state.editingTrainingId = null;
   state.editReturnView = "library";
 
@@ -2019,7 +2033,15 @@ function populateTrainingFormForEdit(training) {
   trainingCreateForm.elements.required_players.value = training.required_players || "";
   trainingCreateForm.elements.age_group.value = training.age_group || "";
   trainingCreateForm.elements.duration.value = training.duration || "";
-  trainingCreateForm.elements.is_template.checked = Boolean(training.is_template);
+
+  const isAdmin = state.currentUser && normalizeRole(state.currentUser.role) === "admin";
+
+  trainingCreateForm.elements.is_template.checked = isAdmin
+      ? Boolean(training.is_template)
+      : false;
+
+  templateOptionField?.classList.toggle("is-hidden", !isAdmin);
+
   trainingCreateForm.elements.notes.value = training.notes || "";
 
   trainingCreateForm.elements.warmup_name.value = training.warmup?.name || "";
@@ -2738,7 +2760,8 @@ function bindEvents() {
 
     const editingId = state.editingTrainingId;
     const formData = new FormData(trainingCreateForm);
-    const isTemplate = formData.get("is_template") === "on";
+    const isAdmin = state.currentUser && normalizeRole(state.currentUser.role) === "admin";
+    const isTemplate = isAdmin && formData.get("is_template") === "on";
     const warmupFile = warmupImageInput.files?.[0] || null;
     const sketchFile = sketchInput.files?.[0] || null;
     const existingTraining = editingId
