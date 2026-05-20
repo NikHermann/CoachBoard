@@ -150,6 +150,11 @@
         <span class="nav-link__icon">⚙️</span>
         Profil
       </button>
+
+      <button id="user-management-nav" class="nav-link nav-link--admin is-hidden" type="button" data-view="user-management">
+        <span class="nav-link__icon">👥</span>
+        Benutzer
+      </button>
     </nav>
 
     <div class="sidebar__footer">Version 1.0.0</div>
@@ -606,6 +611,69 @@
         </form>
       </section>
 
+      <section id="user-management-view" class="view-section">
+        <header class="page-header">
+          <h2>Benutzer verwalten</h2>
+          <p>Benutzer anlegen und Rollen bearbeiten</p>
+        </header>
+
+        <section class="card admin-card">
+          <h3 class="editor-card__title">Neuen Benutzer anlegen</h3>
+
+          <form id="user-management-create-form" class="form-grid admin-form">
+            <label class="field">
+              <span class="field__label">Benutzername</span>
+              <input class="field__control" type="text" name="username" placeholder="Name" required />
+            </label>
+
+            <label class="field">
+              <span class="field__label">Verein</span>
+              <input
+                      class="field__control"
+                      type="text"
+                      name="club"
+                      value="TSV Ottensheim"
+                      placeholder="Verein"
+                      required
+              />
+            </label>
+
+            <label class="field">
+              <span class="field__label">Rolle</span>
+              <select class="field__control" name="role" required>
+                <option value="spieler">Spieler</option>
+                <option value="trainer">Trainer</option>
+                <option value="admin">Admin</option>
+              </select>
+            </label>
+
+            <label class="field">
+              <span class="field__label">Passwort</span>
+              <input
+                      class="field__control"
+                      type="password"
+                      name="password"
+                      placeholder="Startpasswort"
+                      required
+              />
+            </label>
+
+            <div class="editor-actions field--span-2">
+              <button class="btn btn--primary" type="submit">Benutzer anlegen</button>
+            </div>
+          </form>
+        </section>
+
+        <section class="table-block">
+          <h3 class="table-block__title">Vorhandene Benutzer</h3>
+          <p class="table-block__hint">
+            Admins können hier Rollen und Passwörter ändern.
+          </p>
+
+          <div id="user-management-table-wrap" class="table-card"></div>
+        </section>
+      </section>
+
       <section id="profile-view" class="view-section">
         <header class="page-header">
           <h2>Profil</h2>
@@ -650,8 +718,9 @@
           </div>
         </section>
 
-        <section class="card settings-card">
-          <h3 class="editor-card__title">Temporäre Rollenumschaltung</h3>
+
+        <section id="dev-role-section" class="card settings-card is-hidden">
+          <h3 class="editor-card__title">Rollenumschaltung</h3>
           <form id="dev-role-form" class="settings-form">
             <label class="field">
               <span class="field__label">Rolle auswählen</span>

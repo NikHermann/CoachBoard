@@ -1631,3 +1631,14 @@ button {
         grid-template-columns: 1fr;
     }
 }
+.user-delete-btn {
+    background: #dc2626 !important;
+    border-color: #dc2626 !important;
+    color: #ffffff !important;
+}
+
+.user-delete-btn:hover {
+    background: #b91c1c !important;
+    border-color: #b91c1c !important;
+    color: #ffffff !important;
+}

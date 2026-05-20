@@ -1,5 +1,5 @@
 import { fetchTrainingEntries, createTraining, updateTraining, deleteTraining } from "./trainingsService.js";
-import { fetchUsers, createUser, updateUserProfile } from "./usersService.js";
+import { fetchUsers, createUser, updateUserProfile, deleteUser } from "./usersService.js";
 
 const STORAGE_KEY = "coachboardCurrentUserId";
 
@@ -26,6 +26,7 @@ const ROUTE_PATHS = {
   "my-trainings": "/meine-trainings",
   "template-trainings": "/mustertrainings",
   exercises: "/exercises",
+  "user-management": "/benutzer",
   profile: "/profil",
   "username-edit": "/profil/benutzername",
   "password-edit": "/profil/passwort",
@@ -79,6 +80,15 @@ function applyBrowserRoute() {
 
   if (path === "/exercises") {
     state.activeView = "exercises";
+    return;
+  }
+
+  if (path === "/benutzer") {
+    if (state.currentUser && normalizeRole(state.currentUser.role) === "admin") {
+      state.activeView = "user-management";
+    } else {
+      state.activeView = "library";
+    }
     return;
   }
 
@@ -158,6 +168,7 @@ const pageSubtitle = document.getElementById("page-subtitle");
 
 const listingView = document.getElementById("listing-view");
 const exercisesView = document.getElementById("exercises-view");
+const userManagementView = document.getElementById("user-management-view");
 const trainingDetailView = document.getElementById("training-detail-view");
 const trainingCreateView = document.getElementById("training-create-view");
 const profileView = document.getElementById("profile-view");
@@ -253,6 +264,10 @@ const backToProfileFromPasswordBtn = document.getElementById("back-to-profile-fr
 const cancelPasswordEditBtn = document.getElementById("cancel-password-edit-btn");
 const adminUserSection = document.getElementById("admin-user-section");
 const adminCreateUserForm = document.getElementById("admin-create-user-form");
+const userManagementNav = document.getElementById("user-management-nav");
+const userManagementTableWrap = document.getElementById("user-management-table-wrap");
+const userManagementCreateForm = document.getElementById("user-management-create-form");
+const devRoleSection = document.getElementById("dev-role-section");
 const devRoleForm = document.getElementById("dev-role-form");
 const profileRoleSelect = document.getElementById("profile-role-select");
 
@@ -479,7 +494,9 @@ function updateCurrentUserUI() {
     currentPasswordInput.value = "";
     newPasswordInput.value = "";
     repeatPasswordInput.value = "";
-    adminUserSection.classList.add("is-hidden");
+    adminUserSection?.classList.add("is-hidden");
+    devRoleSection?.classList.add("is-hidden");
+    userManagementNav?.classList.add("is-hidden");
     return;
   }
 
@@ -497,7 +514,13 @@ function updateCurrentUserUI() {
   repeatPasswordInput.value = "";
 
   const isAdmin = normalizeRole(user.role) === "admin";
-  adminUserSection.classList.toggle("is-hidden", !isAdmin);
+  adminUserSection?.classList.toggle("is-hidden", !isAdmin);
+  devRoleSection?.classList.toggle("is-hidden", !isAdmin);
+  userManagementNav?.classList.toggle("is-hidden", !isAdmin);
+
+  if (!isAdmin && state.activeView === "user-management") {
+    state.activeView = "library";
+  }
 }
 
 function populateAgeFilter() {
@@ -935,9 +958,16 @@ function createExerciseImageMarkup(exercise) {
     `;
   }
 
-  function createTrainingSketchMarkup(training) {
-    if (isImageDataUrl(training.sketch_preview_url)) {
-      return `
+  if (exercise.sketch_file_name) {
+    return createMediaPlaceholder(exercise.sketch_file_name);
+  }
+
+  return createMediaPlaceholder("Keine Skizze hinterlegt");
+}
+
+function createTrainingSketchMarkup(training) {
+  if (isImageDataUrl(training.sketch_preview_url)) {
+    return `
       <div class="detail-image-frame detail-image-frame--training-extra">
         <img
           class="detail-image detail-image--training-extra"
@@ -946,20 +976,13 @@ function createExerciseImageMarkup(exercise) {
         />
       </div>
     `;
-    }
-
-    if (training.sketch_file_name) {
-      return `<div class="detail-file-box">Zusätzliche Datei hinterlegt.</div>`;
-    }
-
-    return "";
   }
 
-  if (exercise.sketch_file_name) {
-    return createMediaPlaceholder(exercise.sketch_file_name);
+  if (training.sketch_file_name) {
+    return `<div class="detail-file-box">Zusätzliche Datei hinterlegt.</div>`;
   }
 
-  return createMediaPlaceholder("Keine Skizze hinterlegt");
+  return "";
 }
 
 function renderTrainingDetail() {
@@ -1484,6 +1507,24 @@ function updatePageHeader() {
   if (state.activeView === "template-trainings") {
     pageTitle.textContent = "Mustertrainings";
     pageSubtitle.textContent = "Vorlagen und wiederverwendbare Trainings";
+    return;
+  }
+
+  if (state.activeView === "exercises") {
+    pageTitle.textContent = "Exercises";
+    pageSubtitle.textContent = "Alle wiederverwendbaren Übungen und Aufwärmformen";
+    return;
+  }
+
+  if (state.activeView === "user-management") {
+    pageTitle.textContent = "Benutzer";
+    pageSubtitle.textContent = "Benutzer verwalten und Rollen bearbeiten";
+    return;
+  }
+
+  if (state.activeView === "profile") {
+    pageTitle.textContent = "Profil";
+    pageSubtitle.textContent = "Benutzerdaten und Einstellungen";
   }
 }
 
@@ -1492,6 +1533,7 @@ function renderViews() {
 
   listingView.classList.toggle("is-active", isListing);
   exercisesView.classList.toggle("is-active", state.activeView === "exercises");
+  userManagementView?.classList.toggle("is-active", state.activeView === "user-management");
   trainingDetailView.classList.toggle("is-active", state.activeView === "training-detail");
   trainingCreateView.classList.toggle("is-active", state.activeView === "training-create");
   profileView.classList.toggle("is-active", state.activeView === "profile");
@@ -1540,6 +1582,106 @@ function renderExercisesView() {
   renderExercisesTable();
 }
 
+function escapeHtml(value) {
+  return String(value || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+}
+
+function renderUserManagementView() {
+  if (!userManagementTableWrap) return;
+
+  if (!state.currentUser || normalizeRole(state.currentUser.role) !== "admin") {
+    userManagementTableWrap.innerHTML = `
+      <div class="empty-state">Nur Admins dürfen Benutzer verwalten.</div>
+    `;
+    return;
+  }
+
+  if (!state.users.length) {
+    userManagementTableWrap.innerHTML = `
+      <div class="empty-state">Keine Benutzer vorhanden.</div>
+    `;
+    return;
+  }
+
+  const rows = state.users
+      .map((user) => {
+        const isCurrentUser = state.currentUser && user.id === state.currentUser.id;
+        const safeUsername = escapeHtml(user.username);
+        const safeClub = escapeHtml(user.club || "");
+
+        return `
+          <tr>
+            <td>
+              <strong>${safeUsername}</strong>
+              ${isCurrentUser ? `<span class="detail-pill" style="margin-left: 8px;">Du</span>` : ""}
+            </td>
+
+            <td>
+              <input
+                class="field__control user-club-input"
+                type="text"
+                value="${safeClub}"
+                placeholder="Verein"
+                data-user-id="${user.id}"
+              />
+            </td>
+
+            <td>
+              <select class="field__control user-role-select" data-user-id="${user.id}">
+                <option value="spieler" ${normalizeRole(user.role) === "spieler" ? "selected" : ""}>Spieler</option>
+                <option value="trainer" ${normalizeRole(user.role) === "trainer" ? "selected" : ""}>Trainer</option>
+                <option value="admin" ${normalizeRole(user.role) === "admin" ? "selected" : ""}>Admin</option>
+              </select>
+            </td>
+
+            <td>
+              <input
+                class="field__control user-password-input"
+                type="password"
+                placeholder="Passwort ändern"
+                data-user-id="${user.id}"
+              />
+            </td>
+
+            <td>
+              <div class="table-actions">
+                <button class="btn btn--primary btn--small user-save-btn" type="button" data-user-id="${user.id}">
+                  Speichern
+                </button>
+
+                <button class="btn btn--secondary btn--small user-delete-btn" type="button" data-user-id="${user.id}">
+                  Löschen
+                </button>
+              </div>
+            </td>
+          </tr>
+        `;
+      })
+      .join("");
+
+  userManagementTableWrap.innerHTML = `
+    <table class="training-table">
+      <thead>
+        <tr>
+          <th>Benutzer</th>
+          <th>Verein</th>
+          <th>Rolle</th>
+          <th>Neues Passwort</th>
+          <th>Aktion</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows}
+      </tbody>
+    </table>
+  `;
+}
+
 function render() {
   updatePageHeader();
   renderViews();
@@ -1552,6 +1694,10 @@ function render() {
 
   if (state.activeView === "exercises") {
     renderExercisesView();
+  }
+
+  if (state.activeView === "user-management") {
+    renderUserManagementView();
   }
 
   if (state.activeView === "training-detail") {
@@ -1889,13 +2035,13 @@ function populateTrainingFormForEdit(training) {
   }
 
   setUploadBoxExistingFile(
-      sketchUploadBox,
-      sketchUploadTitle,
-      sketchUploadSubtitle,
-      training.sketch_file_name || "",
-      "Datei hier ablegen oder klicken zum Hochladen",
-      "PNG, JPG oder PDF bis 5MB",
-      training.sketch_preview_url || ""
+      warmupUploadBox,
+      warmupUploadTitle,
+      warmupUploadSubtitle,
+      training.warmup?.image_name || "",
+      "Skizze hochladen",
+      "PNG oder JPG bis 5MB",
+      training.warmup?.image_preview_url || ""
   );
 
   setUploadBoxExistingFile(
@@ -1904,7 +2050,8 @@ function populateTrainingFormForEdit(training) {
       sketchUploadSubtitle,
       training.sketch_file_name || "",
       "Datei hier ablegen oder klicken zum Hochladen",
-      "PNG, JPG oder PDF bis 5MB"
+      "PNG, JPG oder PDF bis 5MB",
+      training.sketch_preview_url || ""
   );
 
   exerciseBlocks.innerHTML = "";
@@ -2203,39 +2350,167 @@ function bindEvents() {
     alert(`Rolle wurde auf ${getRoleLabel(selectedRole)} gesetzt.`);
   });
 
-  adminCreateUserForm.addEventListener("submit", async (event) => {
-    event.preventDefault();
+  if (adminCreateUserForm) {
+    adminCreateUserForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
 
-    if (!state.currentUser || normalizeRole(state.currentUser.role) !== "admin") {
-      alert("Nur Admins dürfen höhere Rollen vergeben.");
-      return;
-    }
+      if (!state.currentUser || normalizeRole(state.currentUser.role) !== "admin") {
+        alert("Nur Admins dürfen höhere Rollen vergeben.");
+        return;
+      }
 
-    const formData = new FormData(adminCreateUserForm);
-    const username = String(formData.get("username") || "").trim();
-    const club = String(formData.get("club") || "").trim();
-    const role = String(formData.get("role") || "").trim();
-    const password = String(formData.get("password") || "").trim();
+      const formData = new FormData(adminCreateUserForm);
+      const username = String(formData.get("username") || "").trim();
+      const club = String(formData.get("club") || "").trim();
+      const role = String(formData.get("role") || "").trim();
+      const password = String(formData.get("password") || "").trim();
 
-    if (!username || !club || !role || !password) {
-      alert("Bitte alle Felder ausfüllen.");
-      return;
-    }
+      if (!username || !club || !role || !password) {
+        alert("Bitte alle Felder ausfüllen.");
+        return;
+      }
 
-    await createUser(null, { username, club, role, password });
+      await createUser(null, { username, club, role, password });
 
-    adminCreateUserForm.reset();
-    adminCreateUserForm.querySelector('[name="club"]').value = "TSV Ottensheim";
-    adminCreateUserForm.querySelector('[name="role"]').value = "spieler";
+      adminCreateUserForm.reset();
+      adminCreateUserForm.querySelector('[name="club"]').value = "TSV Ottensheim";
+      adminCreateUserForm.querySelector('[name="role"]').value = "spieler";
 
-    await loadAll();
-    state.activeView = "profile";
-    render();
-  });
+      await loadAll();
+      state.activeView = "profile";
+      render();
+    });
+  }
+
+  if (userManagementCreateForm) {
+    userManagementCreateForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+
+      if (!state.currentUser || normalizeRole(state.currentUser.role) !== "admin") {
+        alert("Nur Admins dürfen Benutzer anlegen.");
+        return;
+      }
+
+      const formData = new FormData(userManagementCreateForm);
+      const username = String(formData.get("username") || "").trim();
+      const club = String(formData.get("club") || "").trim();
+      const role = normalizeRole(formData.get("role"));
+      const password = String(formData.get("password") || "").trim();
+
+      if (!username || !club || !role || !password) {
+        alert("Bitte alle Felder ausfüllen.");
+        return;
+      }
+
+      await createUser(null, { username, club, role, password });
+
+      userManagementCreateForm.reset();
+      userManagementCreateForm.querySelector('[name="club"]').value = "TSV Ottensheim";
+      userManagementCreateForm.querySelector('[name="role"]').value = "spieler";
+
+      await loadAll();
+      state.activeView = "user-management";
+      render();
+
+      alert("Benutzer wurde angelegt.");
+    });
+  }
+
+  if (userManagementTableWrap) {
+    userManagementTableWrap.addEventListener("click", async (event) => {
+      const saveButton = event.target.closest(".user-save-btn");
+      const deleteButton = event.target.closest(".user-delete-btn");
+
+      if (!saveButton && !deleteButton) return;
+
+      if (!state.currentUser || normalizeRole(state.currentUser.role) !== "admin") {
+        alert("Nur Admins dürfen Benutzer verwalten.");
+        return;
+      }
+
+      const userId = saveButton?.dataset.userId || deleteButton?.dataset.userId;
+      const user = state.users.find((item) => item.id === userId);
+
+      if (!user) {
+        alert("Benutzer nicht gefunden.");
+        return;
+      }
+
+      if (deleteButton) {
+        if (state.currentUser.id === user.id) {
+          alert("Du kannst deinen eigenen Account nicht löschen.");
+          return;
+        }
+
+        const confirmed = window.confirm(`Soll der Benutzer "${user.username}" wirklich gelöscht werden?`);
+
+        if (!confirmed) return;
+
+        const result = await deleteUser(user.id);
+
+        if (!result) return;
+
+        await loadAll();
+        state.activeView = "user-management";
+        render();
+
+        alert("Benutzer wurde gelöscht.");
+        return;
+      }
+
+      if (saveButton) {
+        const clubInput = userManagementTableWrap.querySelector(`.user-club-input[data-user-id="${userId}"]`);
+        const roleSelect = userManagementTableWrap.querySelector(`.user-role-select[data-user-id="${userId}"]`);
+        const passwordInput = userManagementTableWrap.querySelector(`.user-password-input[data-user-id="${userId}"]`);
+
+        const selectedClub = String(clubInput?.value || "").trim();
+        const selectedRole = normalizeRole(roleSelect?.value);
+        const newPassword = String(passwordInput?.value || "").trim();
+
+        if (!selectedClub) {
+          alert("Der Verein darf nicht leer sein.");
+          return;
+        }
+
+        const payload = {
+          username: user.username,
+          club: selectedClub,
+          role: selectedRole
+        };
+
+        if (newPassword) {
+          payload.password = newPassword;
+        }
+
+        const result = await updateUserProfile(user.id, payload);
+
+        if (!result) return;
+
+        await loadAll();
+
+        if (state.currentUser && normalizeRole(state.currentUser.role) === "admin") {
+          state.activeView = "user-management";
+        } else {
+          state.activeView = "library";
+        }
+
+        render();
+
+        alert("Benutzer wurde aktualisiert.");
+      }
+    });
+  }
 
   navLinks.forEach((link) => {
     link.addEventListener("click", () => {
-      state.activeView = link.dataset.view;
+      const targetView = link.dataset.view;
+
+      if (targetView === "user-management" && (!state.currentUser || normalizeRole(state.currentUser.role) !== "admin")) {
+        alert("Nur Admins dürfen die Benutzerverwaltung öffnen.");
+        return;
+      }
+
+      state.activeView = targetView;
       state.currentPage = 1;
       render();
     });

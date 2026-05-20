@@ -4,7 +4,8 @@ import {
   getDocs,
   addDoc,
   doc,
-  updateDoc
+  updateDoc,
+  deleteDoc
 } from "firebase/firestore";
 
 function normalizeRole(role) {
@@ -30,6 +31,7 @@ function normalizeUser(userDoc) {
 
 export async function fetchUsers() {
   const snapshot = await getDocs(collection(db, "users"));
+
   return snapshot.docs
       .map(normalizeUser)
       .sort((a, b) => a.username.localeCompare(b.username, "de"));
@@ -85,7 +87,12 @@ export async function createUser(reloadUsers, userData = null) {
   const password = prompt("Passwort:") || "";
 
   try {
-    const docRef = await addDoc(collection(db, "users"), { username, club, role, password });
+    const docRef = await addDoc(collection(db, "users"), {
+      username,
+      club,
+      role,
+      password
+    });
 
     if (typeof reloadUsers === "function") {
       await reloadUsers();
@@ -112,7 +119,12 @@ export async function updateUserProfile(userId, updates, reloadUsers) {
   }
 
   const username = String(updates?.username || "").trim();
-  const password = typeof updates?.password === "string" ? updates.password.trim() : undefined;
+  const club = updates?.club !== undefined
+      ? String(updates.club || "").trim()
+      : undefined;
+  const password = typeof updates?.password === "string"
+      ? updates.password.trim()
+      : undefined;
   const role = updates?.role ? normalizeRole(updates.role) : undefined;
 
   if (!username) {
@@ -120,9 +132,18 @@ export async function updateUserProfile(userId, updates, reloadUsers) {
     return null;
   }
 
+  if (club !== undefined && !club) {
+    alert("Der Verein darf nicht leer sein.");
+    return null;
+  }
+
   const updatePayload = {
     username
   };
+
+  if (club !== undefined) {
+    updatePayload.club = club;
+  }
 
   if (password !== undefined) {
     updatePayload.password = password;
@@ -144,5 +165,26 @@ export async function updateUserProfile(userId, updates, reloadUsers) {
     console.error("Fehler beim Aktualisieren des Profils:", error);
     alert("Profil konnte nicht aktualisiert werden.");
     return null;
+  }
+}
+
+export async function deleteUser(userId, reloadUsers) {
+  if (!userId) {
+    alert("Benutzer konnte nicht gelöscht werden.");
+    return false;
+  }
+
+  try {
+    await deleteDoc(doc(db, "users", userId));
+
+    if (typeof reloadUsers === "function") {
+      await reloadUsers();
+    }
+
+    return true;
+  } catch (error) {
+    console.error("Fehler beim Löschen des Users:", error);
+    alert("User konnte nicht gelöscht werden.");
+    return false;
   }
 }
