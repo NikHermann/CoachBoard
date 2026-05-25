@@ -14,6 +14,7 @@ const state = {
   currentPage: 1,
   itemsPerPage: 8,
   selectedTrainingId: null,
+  selectedExerciseEntryId: null,
   detailSourceView: "library",
   editingTrainingId: null,
   editReturnView: "library",
@@ -40,6 +41,10 @@ function getRoutePathFromState() {
     return `/training/${encodeURIComponent(state.selectedTrainingId)}`;
   }
 
+  if (state.activeView === "exercise-detail" && state.selectedExerciseEntryId) {
+    return `/exercise/${encodeURIComponent(state.selectedExerciseEntryId)}`;
+  }
+
   if (state.activeView === "training-create" && state.editingTrainingId) {
     return `/training/${encodeURIComponent(state.editingTrainingId)}/bearbeiten`;
   }
@@ -62,6 +67,7 @@ function applyBrowserRoute() {
   const segments = path.split("/").filter(Boolean);
 
   state.selectedTrainingId = null;
+  state.selectedExerciseEntryId = null;
   state.editingTrainingId = null;
   state.editReturnView = "library";
 
@@ -122,6 +128,13 @@ function applyBrowserRoute() {
   if (path === "/training/neu") {
     resetTrainingCreateForm();
     state.activeView = "training-create";
+    return;
+  }
+
+  if (segments[0] === "exercise" && segments[1]) {
+    state.selectedExerciseEntryId = decodeURIComponent(segments[1]);
+    state.detailSourceView = "exercises";
+    state.activeView = "exercise-detail";
     return;
   }
 
@@ -285,6 +298,7 @@ const userManagementCreateForm = document.getElementById("user-management-create
 const devRoleSection = document.getElementById("dev-role-section");
 const devRoleForm = document.getElementById("dev-role-form");
 const profileRoleSelect = document.getElementById("profile-role-select");
+
 
 function normalizeRole(role) {
   const value = String(role || "").trim().toLowerCase();
@@ -966,8 +980,21 @@ function canEditTraining(training, sourceView) {
 
 function openTrainingDetail(trainingId, sourceView = state.activeView) {
   state.selectedTrainingId = trainingId;
+  state.selectedExerciseEntryId = null;
   state.detailSourceView = sourceView;
   state.activeView = "training-detail";
+  render();
+}
+
+function getSelectedExerciseEntry() {
+  return state.exerciseEntries.find((entry) => entry.id === state.selectedExerciseEntryId) || null;
+}
+
+function openExerciseDetail(entryId) {
+  state.selectedExerciseEntryId = entryId;
+  state.selectedTrainingId = null;
+  state.detailSourceView = "exercises";
+  state.activeView = "exercise-detail";
   render();
 }
 
@@ -1050,6 +1077,14 @@ function renderTrainingDetail() {
   const training = getSelectedTraining();
   const editable = canEditTraining(training, state.detailSourceView);
   const isAdmin = state.currentUser && normalizeRole(state.currentUser.role) === "admin";
+
+  trainingDetailWarmup.parentElement.classList.remove("is-hidden");
+  trainingDetailExercises.parentElement.classList.remove("is-hidden");
+  trainingDetailSketch.parentElement.classList.add("is-hidden");
+  trainingDetailNotes.parentElement.classList.add("is-hidden");
+
+  trainingDetailWarmup.parentElement.querySelector(".detail-section-title").textContent = "Aufwärmen";
+  trainingDetailExercises.parentElement.querySelector(".detail-section-title").textContent = "Übungen";
 
   detailPrintBtn.classList.toggle("is-hidden", !training);
   detailEditBtn.classList.toggle("is-hidden", !editable);
@@ -1210,6 +1245,101 @@ function renderTrainingDetail() {
   trainingDetailNotes.innerHTML = "";
 }
 
+function renderExerciseDetail() {
+  const entry = getSelectedExerciseEntry();
+
+  trainingDetailWarmup.parentElement.classList.add("is-hidden");
+  trainingDetailExercises.parentElement.classList.remove("is-hidden");
+  trainingDetailSketch.parentElement.classList.add("is-hidden");
+  trainingDetailNotes.parentElement.classList.add("is-hidden");
+
+  trainingDetailWarmup.parentElement.querySelector(".detail-section-title").textContent = "Aufwärmen";
+  trainingDetailExercises.parentElement.querySelector(".detail-section-title").textContent =
+      entry?.type === "warmup" ? "Aufwärmen" : "Übung";
+
+  detailPrintBtn.classList.toggle("is-hidden", !entry);
+  detailEditBtn.classList.add("is-hidden");
+  detailDeleteBtn.classList.add("is-hidden");
+
+  trainingDetailSketch.innerHTML = "";
+  trainingDetailNotes.innerHTML = "";
+  trainingDetailWarmup.innerHTML = "";
+
+  if (!entry) {
+    trainingDetailTitle.textContent = "Übung nicht gefunden";
+    trainingDetailSubtitle.textContent = "Die ausgewählte Übung konnte nicht geladen werden.";
+    trainingDetailMeta.innerHTML = `<div class="detail-empty">Keine Übung gefunden.</div>`;
+    trainingDetailExercises.innerHTML = `<div class="detail-empty">Keine Daten verfügbar.</div>`;
+    return;
+  }
+
+  const mediaMarkup =
+      entry.type === "warmup"
+          ? createWarmupImageMarkup({
+            name: entry.title,
+            image_name: entry.image_name,
+            image_preview_url: entry.image_preview_url
+          })
+          : createExerciseImageMarkup({
+            name: entry.title,
+            sketch_file_name: entry.sketch_file_name,
+            sketch_preview_url: entry.sketch_preview_url
+          });
+
+  trainingDetailTitle.textContent = entry.title || entry.typeLabel;
+  trainingDetailSubtitle.textContent = `${entry.typeLabel} aus: ${entry.trainingTitle || "Training"}`;
+
+  trainingDetailMeta.innerHTML = [
+    createDetailMetaItem("Name", entry.title || "—"),
+    createDetailMetaItem("Typ", entry.typeLabel || "—"),
+    createDetailMetaItem("Ursprüngliches Training", entry.trainingTitle || "—"),
+    createDetailMetaItem("Datum", entry.dateLabel || "—"),
+    createDetailMetaItem("Spieleranzahl", entry.required_players || "—"),
+    createDetailMetaItem("Altersgruppe", entry.age_group || "—"),
+    createDetailMetaItem("Dauer", entry.duration ? `${entry.duration} min` : "—")
+  ].join("");
+
+  trainingDetailExercises.innerHTML = `
+    <div class="detail-card">
+      <h4 class="detail-card__title">${entry.title || entry.typeLabel}</h4>
+      <div class="detail-split">
+        <div class="detail-split__content">
+          <div class="detail-inline-grid detail-inline-grid--2">
+            <div>
+              <span class="detail-meta-item__label">Dauer</span>
+              <div class="detail-meta-item__value">${entry.duration || "—"}</div>
+            </div>
+            <div>
+              <span class="detail-meta-item__label">Material</span>
+              <div class="detail-meta-item__value">${entry.material || "—"}</div>
+            </div>
+          </div>
+
+          <div>
+            <span class="detail-meta-item__label">Beschreibung</span>
+            <p class="detail-text">${entry.description || "Keine Beschreibung vorhanden."}</p>
+          </div>
+
+          <div>
+            <span class="detail-meta-item__label">Coachingpunkte</span>
+            <p class="detail-text">${entry.coaching_points || "Keine Coachingpunkte vorhanden."}</p>
+          </div>
+
+          <div>
+            <span class="detail-meta-item__label">Variation</span>
+            <p class="detail-text">${entry.variation || "Keine Variation vorhanden."}</p>
+          </div>
+        </div>
+
+        <div class="detail-split__media">
+          <span class="detail-meta-item__label">Skizze</span>
+          ${mediaMarkup}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
 function renderTable() {
   const totalItems = state.filteredTrainings.length;
   const totalPages = Math.max(1, Math.ceil(totalItems / state.itemsPerPage));
@@ -1344,7 +1474,7 @@ function renderExercisesTable() {
         const typeBadgeClass = entry.type === "warmup" ? "detail-pill--warmup" : "detail-pill--exercise";
 
         return `
-        <tr class="training-table__row--clickable" tabindex="0" data-exercise-training-id="${entry.trainingId}">
+        <tr class="training-table__row--clickable" tabindex="0" data-exercise-id="${entry.id}">
           <td>
             <button class="training-name training-name--button" type="button">
               ${entry.title}
@@ -1378,15 +1508,15 @@ function renderExercisesTable() {
     </table>
   `;
 
-  exercisesTableWrap.querySelectorAll("[data-exercise-training-id]").forEach((row) => {
+  exercisesTableWrap.querySelectorAll("[data-exercise-id]").forEach((row) => {
     row.addEventListener("click", () => {
-      openTrainingDetail(row.dataset.exerciseTrainingId, "exercises");
+      openExerciseDetail(row.dataset.exerciseId);
     });
 
     row.addEventListener("keydown", (event) => {
       if (event.key === "Enter" || event.key === " ") {
         event.preventDefault();
-        openTrainingDetail(row.dataset.exerciseTrainingId, "exercises");
+        openExerciseDetail(row.dataset.exerciseId);
       }
     });
   });
@@ -1607,7 +1737,7 @@ function renderViews() {
   listingView.classList.toggle("is-active", isListing);
   exercisesView.classList.toggle("is-active", state.activeView === "exercises");
   userManagementView?.classList.toggle("is-active", state.activeView === "user-management");
-  trainingDetailView.classList.toggle("is-active", state.activeView === "training-detail");
+  trainingDetailView.classList.toggle("is-active", ["training-detail", "exercise-detail"].includes(state.activeView));
   trainingCreateView.classList.toggle("is-active", state.activeView === "training-create");
   profileView.classList.toggle("is-active", state.activeView === "profile");
   impressumView?.classList.toggle("is-active", state.activeView === "impressum");
@@ -1621,6 +1751,7 @@ function renderActiveNav() {
     const targetView = link.dataset.view;
     const isProfileGroup = ["profile", "username-edit", "password-edit"].includes(state.activeView);
     const isDetailGroup = state.activeView === "training-detail" && targetView === state.detailSourceView;
+    const isExerciseDetailGroup = state.activeView === "exercise-detail" && targetView === "exercises";
     const isEditGroup = state.activeView === "training-create" && targetView === state.editReturnView;
 
     if (targetView === "profile") {
@@ -1628,7 +1759,7 @@ function renderActiveNav() {
       return;
     }
 
-    link.classList.toggle("is-active", state.activeView === targetView || isDetailGroup || isEditGroup);
+    link.classList.toggle("is-active", state.activeView === targetView || isDetailGroup || isExerciseDetailGroup || isEditGroup);
   });
 }
 
@@ -1777,6 +1908,10 @@ function render() {
 
   if (state.activeView === "training-detail") {
     renderTrainingDetail();
+  }
+
+  if (state.activeView === "exercise-detail") {
+    renderExerciseDetail();
   }
 
   if (state.activeView === "training-create") {
@@ -1967,7 +2102,25 @@ function createExerciseBlock(exerciseData = null) {
   wrapper.className = "editor-card exercise-card";
   wrapper.innerHTML = `
     <div class="exercise-card__header">
-      <h3 class="editor-card__title exercise-card__title">Übung</h3>
+      <div class="exercise-card__title-row">
+        <div class="exercise-card__order-controls" aria-label="Reihenfolge ändern">
+          <button
+            class="exercise-order-btn"
+            type="button"
+            data-move-exercise="up"
+            aria-label="Übung nach oben verschieben"
+            title="Übung nach oben verschieben"
+          >↑</button>
+          <button
+            class="exercise-order-btn"
+            type="button"
+            data-move-exercise="down"
+            aria-label="Übung nach unten verschieben"
+            title="Übung nach unten verschieben"
+          >↓</button>
+        </div>
+        <h3 class="editor-card__title exercise-card__title">Übung</h3>
+      </div>
       <button class="exercise-remove-btn" type="button" data-remove-exercise>Entfernen</button>
     </div>
 
@@ -2051,6 +2204,8 @@ function updateExerciseTitles() {
   blocks.forEach((block, index) => {
     const title = block.querySelector(".exercise-card__title");
     const removeBtn = block.querySelector("[data-remove-exercise]");
+    const moveUpBtn = block.querySelector('[data-move-exercise="up"]');
+    const moveDownBtn = block.querySelector('[data-move-exercise="down"]');
 
     if (title) {
       title.textContent = `Übung ${index + 1}`;
@@ -2059,7 +2214,42 @@ function updateExerciseTitles() {
     if (removeBtn) {
       removeBtn.classList.toggle("is-hidden", blocks.length === 1);
     }
+
+    if (moveUpBtn) {
+      moveUpBtn.disabled = index === 0;
+    }
+
+    if (moveDownBtn) {
+      moveDownBtn.disabled = index === blocks.length - 1;
+    }
   });
+}
+
+function moveExerciseBlock(card, direction) {
+  if (!card || !card.classList.contains("exercise-card")) return;
+
+  if (direction === "up") {
+    const previousCard = card.previousElementSibling;
+
+    if (previousCard && previousCard.classList.contains("exercise-card")) {
+      exerciseBlocks.insertBefore(card, previousCard);
+    }
+  }
+
+  if (direction === "down") {
+    const nextCard = card.nextElementSibling;
+
+    if (nextCard && nextCard.classList.contains("exercise-card")) {
+      exerciseBlocks.insertBefore(nextCard, card);
+    }
+  }
+
+  updateExerciseTitles();
+
+  const focusButton = card.querySelector(`[data-move-exercise="${direction}"]`);
+  if (focusButton) {
+    focusButton.focus();
+  }
 }
 
 function resetTrainingCreateForm() {
@@ -2713,15 +2903,27 @@ function bindEvents() {
   });
 
   detailPrintBtn.addEventListener("click", () => {
-    const training = getSelectedTraining();
-
-    if (!training) {
-      alert("Kein Training ausgewählt.");
-      return;
-    }
-
     const previousTitle = document.title;
-    document.title = `Training - ${training.title}`;
+
+    if (state.activeView === "exercise-detail") {
+      const entry = getSelectedExerciseEntry();
+
+      if (!entry) {
+        alert("Keine Übung ausgewählt.");
+        return;
+      }
+
+      document.title = `${entry.typeLabel} - ${entry.title}`;
+    } else {
+      const training = getSelectedTraining();
+
+      if (!training) {
+        alert("Kein Training ausgewählt.");
+        return;
+      }
+
+      document.title = `Training - ${training.title}`;
+    }
 
     window.print();
 
@@ -2849,6 +3051,15 @@ function bindEvents() {
   exerciseBlocks.addEventListener("click", (event) => {
     const target = event.target;
     if (!(target instanceof HTMLElement)) return;
+
+    const moveButton = target.closest("[data-move-exercise]");
+    if (moveButton) {
+      const card = moveButton.closest(".exercise-card");
+      if (!card) return;
+
+      moveExerciseBlock(card, moveButton.dataset.moveExercise);
+      return;
+    }
 
     const removeButton = target.closest("[data-remove-exercise]");
     if (!removeButton) return;
