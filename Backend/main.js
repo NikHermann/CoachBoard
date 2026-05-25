@@ -192,7 +192,6 @@ const loginUsername = document.getElementById("login-username");
 const loginPassword = document.getElementById("login-password");
 
 const pageTitle = document.getElementById("page-title");
-const pageSubtitle = document.getElementById("page-subtitle");
 
 const listingView = document.getElementById("listing-view");
 const exercisesView = document.getElementById("exercises-view");
@@ -214,7 +213,6 @@ const exercisesTableWrap = document.getElementById("exercises-table-wrap");
 const exercisesPagination = document.getElementById("exercises-pagination");
 
 const trainingDetailTitle = document.getElementById("training-detail-title");
-const trainingDetailSubtitle = document.getElementById("training-detail-subtitle");
 const trainingDetailMeta = document.getElementById("training-detail-meta");
 const trainingDetailWarmup = document.getElementById("training-detail-warmup");
 const trainingDetailExercises = document.getElementById("training-detail-exercises");
@@ -246,7 +244,6 @@ const exerciseBlocks = document.getElementById("exercise-blocks");
 const backToLibraryBtn = document.getElementById("back-to-library-btn");
 const cancelTrainingBtn = document.getElementById("cancel-training-btn");
 const trainingEditorTitle = document.getElementById("training-editor-title");
-const trainingEditorSubtitle = document.getElementById("training-editor-subtitle");
 const trainingSubmitBtn = document.getElementById("training-submit-btn");
 
 const openWarmupLibraryBtn = document.getElementById("open-warmup-library-btn");
@@ -1129,7 +1126,6 @@ function renderTrainingDetail() {
     detailPrintBtn.classList.add("is-hidden");
     detailDeleteBtn.classList.add("is-hidden");
     trainingDetailTitle.textContent = "Training nicht gefunden";
-    trainingDetailSubtitle.textContent = "Die ausgewählte Trainingseinheit konnte nicht geladen werden.";
     trainingDetailMeta.innerHTML = `<div class="detail-empty">Kein Training gefunden.</div>`;
     trainingDetailWarmup.innerHTML = `<div class="detail-empty">Keine Daten verfügbar.</div>`;
     trainingDetailExercises.innerHTML = `<div class="detail-empty">Keine Daten verfügbar.</div>`;
@@ -1139,9 +1135,6 @@ function renderTrainingDetail() {
   }
 
   trainingDetailTitle.textContent = training.title;
-  trainingDetailSubtitle.textContent = training.is_template
-      ? "Detailansicht eines Mustertrainings"
-      : "Detailansicht einer Trainingseinheit";
 
   const hasTrainingSketch = Boolean(training.sketch_file_name || training.sketch_preview_url);
   const hasTrainingNotes = Boolean(String(training.notes || "").trim());
@@ -1302,7 +1295,6 @@ function renderExerciseDetail() {
 
   if (!entry) {
     trainingDetailTitle.textContent = "Übung nicht gefunden";
-    trainingDetailSubtitle.textContent = "Die ausgewählte Übung konnte nicht geladen werden.";
     trainingDetailMeta.innerHTML = `<div class="detail-empty">Keine Übung gefunden.</div>`;
     trainingDetailExercises.innerHTML = `<div class="detail-empty">Keine Daten verfügbar.</div>`;
     return;
@@ -1322,7 +1314,6 @@ function renderExerciseDetail() {
           });
 
   trainingDetailTitle.textContent = entry.title || entry.typeLabel;
-  trainingDetailSubtitle.textContent = `${entry.typeLabel} aus: ${entry.trainingTitle || "Training"}`;
 
   trainingDetailMeta.innerHTML = [
     createDetailMetaItem("Name", entry.title || "—"),
@@ -1720,49 +1711,41 @@ function useExerciseLibraryEntry(entry) {
 function updatePageHeader() {
   if (state.activeView === "library") {
     pageTitle.textContent = "Bibliothek";
-    pageSubtitle.textContent = "Übersicht über alle Trainingseinheiten";
     return;
   }
 
   if (state.activeView === "my-trainings") {
     pageTitle.textContent = "Meine Trainings";
-    pageSubtitle.textContent = "Übersicht über deine eigenen Trainingseinheiten";
     return;
   }
 
   if (state.activeView === "template-trainings") {
     pageTitle.textContent = "Mustertrainings";
-    pageSubtitle.textContent = "Vorlagen und wiederverwendbare Trainings";
     return;
   }
 
   if (state.activeView === "exercises") {
     pageTitle.textContent = "Exercises";
-    pageSubtitle.textContent = "Alle wiederverwendbaren Übungen und Aufwärmformen";
     return;
   }
 
   if (state.activeView === "user-management") {
     pageTitle.textContent = "Benutzer";
-    pageSubtitle.textContent = "Benutzer verwalten und Rollen bearbeiten";
     return;
   }
 
   if (state.activeView === "impressum") {
     pageTitle.textContent = "Impressum";
-    pageSubtitle.textContent = "Rechtliche Angaben zum Betreiber";
     return;
   }
 
   if (state.activeView === "terms") {
     pageTitle.textContent = "Nutzungsbedingungen";
-    pageSubtitle.textContent = "Regeln für die Nutzung der Plattform";
     return;
   }
 
   if (state.activeView === "profile") {
     pageTitle.textContent = "Profil";
-    pageSubtitle.textContent = "Benutzerdaten und Einstellungen";
   }
 }
 
@@ -1802,9 +1785,6 @@ function renderEditorState() {
   const isEditing = Boolean(state.editingTrainingId);
 
   trainingEditorTitle.textContent = isEditing ? "Training bearbeiten" : "Training erstellen";
-  trainingEditorSubtitle.textContent = isEditing
-      ? "Bearbeiten Sie die bestehende Trainingseinheit"
-      : "Erstellen Sie eine neue Trainingseinheit";
   trainingSubmitBtn.textContent = isEditing ? "Änderungen speichern" : "Speichern";
 }
 
