@@ -180,6 +180,9 @@ function applyBrowserRoute() {
 
 const authScreen = document.getElementById("auth-screen");
 const dashboardApp = document.getElementById("dashboard-app");
+const appSidebar = document.getElementById("app-sidebar");
+const mobileMenuToggle = document.getElementById("mobile-menu-toggle");
+const mobileMenuBackdrop = document.getElementById("mobile-menu-backdrop");
 const authTabButtons = document.querySelectorAll("[data-auth-tab]");
 const authLoginPanel = document.getElementById("auth-login-panel");
 const authRegisterPanel = document.getElementById("auth-register-panel");
@@ -299,6 +302,37 @@ const devRoleSection = document.getElementById("dev-role-section");
 const devRoleForm = document.getElementById("dev-role-form");
 const profileRoleSelect = document.getElementById("profile-role-select");
 
+
+
+function isMobileMenuViewport() {
+  return window.matchMedia("(max-width: 900px)").matches;
+}
+
+function setMobileMenuOpen(isOpen) {
+  if (!dashboardApp) return;
+
+  const shouldOpen = Boolean(isOpen) && isMobileMenuViewport();
+  dashboardApp.classList.toggle("is-mobile-menu-open", shouldOpen);
+  document.body.classList.toggle("mobile-menu-open", shouldOpen);
+  mobileMenuToggle?.setAttribute("aria-expanded", shouldOpen ? "true" : "false");
+  mobileMenuToggle?.setAttribute("aria-label", shouldOpen ? "Menü schließen" : "Menü öffnen");
+
+  if (!shouldOpen) {
+    mobileMenuBackdrop?.setAttribute("tabindex", "-1");
+    return;
+  }
+
+  mobileMenuBackdrop?.setAttribute("tabindex", "0");
+}
+
+function closeMobileMenu() {
+  setMobileMenuOpen(false);
+}
+
+function toggleMobileMenu() {
+  const isOpen = dashboardApp?.classList.contains("is-mobile-menu-open");
+  setMobileMenuOpen(!isOpen);
+}
 
 function normalizeRole(role) {
   const value = String(role || "").trim().toLowerCase();
@@ -494,6 +528,7 @@ function setAuthTab(tabName) {
 }
 
 function showAuth() {
+  closeMobileMenu();
   authScreen.classList.remove("is-hidden");
   dashboardApp.classList.add("is-hidden");
 }
@@ -1358,21 +1393,21 @@ function renderTable() {
       .map((training) => {
         return `
         <tr class="training-table__row--clickable" tabindex="0" data-training-id="${training.id}">
-          <td>
+          <td data-label="Name">
             <button class="training-name training-name--button" type="button">
               ${training.title}
             </button>
           </td>
-          <td>${training.dateLabel}</td>
-          <td>${training.required_players || "—"}</td>
-          <td>
+          <td data-label="Datum">${training.dateLabel}</td>
+          <td data-label="Spieler">${training.required_players || "—"}</td>
+          <td data-label="Mustertraining">
             <span class="mt-indicator ${
             training.is_template ? "mt-indicator--active" : "mt-indicator--inactive"
         }">
               ${training.is_template ? "X" : "–"}
             </span>
           </td>
-          <td><span class="category-pill">${training.age_group}</span></td>
+          <td data-label="Kategorie"><span class="category-pill">${training.age_group}</span></td>
         </tr>
       `;
       })
@@ -1475,16 +1510,16 @@ function renderExercisesTable() {
 
         return `
         <tr class="training-table__row--clickable" tabindex="0" data-exercise-id="${entry.id}">
-          <td>
+          <td data-label="Exercise">
             <button class="training-name training-name--button" type="button">
               ${entry.title}
             </button>
           </td>
-          <td><span class="detail-pill ${typeBadgeClass}">${entry.typeLabel}</span></td>
-          <td>${entry.trainingTitle}</td>
-          <td>${entry.required_players || "—"}</td>
-          <td><span class="category-pill">${entry.age_group}</span></td>
-          <td>${entry.dateLabel}</td>
+          <td data-label="Typ"><span class="detail-pill ${typeBadgeClass}">${entry.typeLabel}</span></td>
+          <td data-label="Training">${entry.trainingTitle}</td>
+          <td data-label="Spieler">${entry.required_players || "—"}</td>
+          <td data-label="Kategorie"><span class="category-pill">${entry.age_group}</span></td>
+          <td data-label="Datum">${entry.dateLabel}</td>
         </tr>
       `;
       })
@@ -1822,12 +1857,12 @@ function renderUserManagementView() {
 
         return `
           <tr>
-            <td>
+            <td data-label="Benutzer">
               <strong>${safeUsername}</strong>
               ${isCurrentUser ? `<span class="detail-pill" style="margin-left: 8px;">Du</span>` : ""}
             </td>
 
-            <td>
+            <td data-label="Verein">
               <input
                 class="field__control user-club-input"
                 type="text"
@@ -1837,7 +1872,7 @@ function renderUserManagementView() {
               />
             </td>
 
-            <td>
+            <td data-label="Rolle">
               <select class="field__control user-role-select" data-user-id="${user.id}">
                 <option value="spieler" ${normalizeRole(user.role) === "spieler" ? "selected" : ""}>Spieler</option>
                 <option value="trainer" ${normalizeRole(user.role) === "trainer" ? "selected" : ""}>Trainer</option>
@@ -1845,7 +1880,7 @@ function renderUserManagementView() {
               </select>
             </td>
 
-            <td>
+            <td data-label="Neues Passwort">
               <input
                 class="field__control user-password-input"
                 type="password"
@@ -1854,7 +1889,7 @@ function renderUserManagementView() {
               />
             </td>
 
-            <td>
+            <td data-label="Aktion">
               <div class="table-actions">
                 <button class="btn btn--primary btn--small user-save-btn" type="button" data-user-id="${user.id}">
                   Speichern
@@ -1889,6 +1924,7 @@ function renderUserManagementView() {
 }
 
 function render() {
+  closeMobileMenu();
   updatePageHeader();
   renderViews();
   renderActiveNav();
@@ -2827,6 +2863,21 @@ function bindEvents() {
     });
   }
 
+  mobileMenuToggle?.addEventListener("click", toggleMobileMenu);
+  mobileMenuBackdrop?.addEventListener("click", closeMobileMenu);
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      closeMobileMenu();
+    }
+  });
+
+  window.addEventListener("resize", () => {
+    if (!isMobileMenuViewport()) {
+      closeMobileMenu();
+    }
+  });
+
   navLinks.forEach((link) => {
     link.addEventListener("click", () => {
       const targetView = link.dataset.view;
@@ -2965,6 +3016,7 @@ function bindEvents() {
   });
 
   createTrainingBtn.addEventListener("click", () => {
+    closeMobileMenu();
     openTrainingCreateView();
   });
 
@@ -3163,6 +3215,7 @@ function bindEvents() {
   });
 
   logoutBtn.addEventListener("click", () => {
+    closeMobileMenu();
     resetTrainingCreateForm();
     setCurrentUser(null);
     setAuthTab("login");

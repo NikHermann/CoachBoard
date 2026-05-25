@@ -105,7 +105,7 @@
 </section>
 
 <div id="dashboard-app" class="dashboard-app is-hidden">
-  <aside class="sidebar">
+  <aside id="app-sidebar" class="sidebar" aria-label="Hauptmenü">
     <div class="sidebar__brand">
       <img
               src="./tsv-logo.png"
@@ -160,9 +160,29 @@
     <div class="sidebar__footer">Version 1.0.0</div>
   </aside>
 
+  <button id="mobile-menu-backdrop" class="mobile-menu-backdrop" type="button" aria-label="Menü schließen" tabindex="-1"></button>
+
   <div class="main-shell">
     <header class="topbar">
-      <div></div>
+      <div class="mobile-topbar-brand">
+        <button
+                id="mobile-menu-toggle"
+                class="mobile-menu-toggle"
+                type="button"
+                aria-label="Menü öffnen"
+                aria-controls="app-sidebar"
+                aria-expanded="false"
+        >
+          <span></span>
+          <span></span>
+          <span></span>
+        </button>
+
+        <div class="mobile-topbar-title">
+          <strong>TSV Ottensheim</strong>
+          <span>Trainingsdatenbank</span>
+        </div>
+      </div>
 
       <div class="topbar-actions">
         <div class="topbar-legal-links">

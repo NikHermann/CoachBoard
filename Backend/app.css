@@ -63,6 +63,18 @@ button {
     grid-template-columns: 260px 1fr;
 }
 
+/* Mobile Navigation */
+.mobile-topbar-brand,
+.mobile-menu-toggle,
+.mobile-menu-backdrop {
+    display: none;
+}
+
+.nav-link--legal {
+    display: none;
+}
+
+
 .sidebar {
     background: #fff;
     border-right: 1px solid var(--border);
@@ -188,6 +200,7 @@ button {
     display: flex;
     align-items: center;
     gap: 12px;
+    margin-left: auto;
 }
 
 .profile-chip {
@@ -1741,4 +1754,434 @@ button {
 .topbar-legal-link.is-active {
     color: var(--primary);
     font-weight: 700;
+}
+
+/* Verbesserte Handy-Ansicht mit einklappbarem Menü */
+@media (max-width: 900px) {
+    body.mobile-menu-open {
+        overflow: hidden;
+    }
+
+    .dashboard-app {
+        display: block;
+        min-height: 100dvh;
+    }
+
+    .main-shell {
+        min-height: 100dvh;
+    }
+
+    .topbar {
+        position: sticky;
+        top: 0;
+        z-index: 900;
+        min-height: 64px;
+        height: auto;
+        padding: 10px 16px;
+        gap: 12px;
+        box-shadow: 0 1px 12px rgba(16, 24, 40, 0.06);
+    }
+
+    .mobile-topbar-brand {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        min-width: 0;
+    }
+
+    .mobile-menu-toggle {
+        width: 46px;
+        height: 46px;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        background: #fff;
+        display: inline-flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 5px;
+        flex-shrink: 0;
+    }
+
+    .mobile-menu-toggle span {
+        display: block;
+        width: 20px;
+        height: 2px;
+        border-radius: 999px;
+        background: var(--primary);
+        transition: transform 0.2s ease, opacity 0.2s ease;
+    }
+
+    .dashboard-app.is-mobile-menu-open .mobile-menu-toggle span:nth-child(1) {
+        transform: translateY(7px) rotate(45deg);
+    }
+
+    .dashboard-app.is-mobile-menu-open .mobile-menu-toggle span:nth-child(2) {
+        opacity: 0;
+    }
+
+    .dashboard-app.is-mobile-menu-open .mobile-menu-toggle span:nth-child(3) {
+        transform: translateY(-7px) rotate(-45deg);
+    }
+
+    .mobile-topbar-title {
+        display: grid;
+        gap: 2px;
+        min-width: 0;
+    }
+
+    .mobile-topbar-title strong {
+        color: var(--primary);
+        font-size: 15px;
+        line-height: 1.1;
+        white-space: nowrap;
+    }
+
+    .mobile-topbar-title span {
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.1;
+        white-space: nowrap;
+    }
+
+    .topbar-actions {
+        width: auto;
+        min-width: 0;
+        margin-left: auto;
+        gap: 8px;
+        justify-content: flex-end;
+    }
+
+    .topbar-legal-links {
+        display: none;
+    }
+
+    .sidebar {
+        position: fixed;
+        inset: 0 auto 0 0;
+        z-index: 1001;
+        width: min(86vw, 330px);
+        min-height: 100dvh;
+        max-height: 100dvh;
+        border-right: 1px solid var(--border);
+        border-bottom: 0;
+        box-shadow: 24px 0 50px rgba(15, 23, 42, 0.18);
+        transform: translateX(-105%);
+        transition: transform 0.25s ease;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .dashboard-app.is-mobile-menu-open .sidebar {
+        transform: translateX(0);
+    }
+
+    .mobile-menu-backdrop {
+        display: block;
+        position: fixed;
+        inset: 0;
+        z-index: 1000;
+        border: 0;
+        background: rgba(15, 23, 42, 0.42);
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.2s ease;
+    }
+
+    .dashboard-app.is-mobile-menu-open .mobile-menu-backdrop {
+        opacity: 1;
+        pointer-events: auto;
+    }
+
+    .sidebar__brand {
+        padding: 18px;
+    }
+
+    .sidebar__brand-logo {
+        width: 56px;
+        height: 56px;
+    }
+
+    .sidebar__action {
+        padding: 14px 16px;
+    }
+
+    .sidebar__nav {
+        padding: 0 12px 16px;
+        gap: 8px;
+    }
+
+    .nav-link {
+        min-height: 52px;
+        border-radius: 12px;
+        font-size: 16px;
+        padding: 0 16px;
+    }
+
+    .nav-link--legal {
+        display: none !important;
+    }
+
+    .sidebar__footer {
+        text-align: left;
+        padding: 16px 18px;
+    }
+}
+
+@media (max-width: 700px) {
+    html {
+        font-size: 16px;
+    }
+
+    .page-content {
+        padding: 16px 14px 28px;
+    }
+
+    .page-header {
+        margin-bottom: 18px;
+    }
+
+    .page-header h2 {
+        font-size: 24px;
+        line-height: 1.15;
+    }
+
+    .page-header p {
+        font-size: 15px;
+        line-height: 1.45;
+    }
+
+    .filter-card,
+    .profile-card,
+    .admin-card,
+    .settings-card,
+    .detail-overview-card,
+    .detail-section-card {
+        padding: 18px;
+        border-radius: 14px;
+    }
+
+    .filters-grid,
+    .filters-grid--exercises,
+    .admin-form,
+    .form-grid--2,
+    .detail-meta-grid,
+    .detail-inline-grid--2,
+    .account-actions-grid {
+        grid-template-columns: 1fr;
+        gap: 14px;
+    }
+
+    .field--span-2 {
+        grid-column: span 1;
+    }
+
+    .field__control {
+        min-height: 50px;
+        font-size: 16px;
+    }
+
+    .btn {
+        min-height: 48px;
+        border-radius: 10px;
+    }
+
+    .btn--small {
+        min-height: 42px;
+    }
+
+    .filter-actions,
+    .editor-actions,
+    .exercise-actions,
+    .page-toolbar {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .filter-actions .btn,
+    .editor-actions .btn,
+    .exercise-actions .btn,
+    .page-toolbar .btn {
+        width: 100%;
+    }
+
+    .stats-card {
+        grid-template-columns: 1fr;
+        gap: 14px;
+        padding: 18px;
+        border-radius: 14px;
+    }
+
+    .stat-item {
+        padding-bottom: 14px;
+        border-bottom: 1px solid var(--border-soft);
+    }
+
+    .stat-item:last-child {
+        padding-bottom: 0;
+        border-bottom: 0;
+    }
+
+    .table-card {
+        overflow: visible;
+        border: 0;
+        background: transparent;
+    }
+
+    .training-table,
+    .training-table thead,
+    .training-table tbody,
+    .training-table tr,
+    .training-table th,
+    .training-table td {
+        display: block;
+        width: 100%;
+    }
+
+    .training-table thead {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+        white-space: nowrap;
+    }
+
+    .training-table tbody {
+        display: grid;
+        gap: 12px;
+    }
+
+    .training-table tbody tr {
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        background: #fff;
+        box-shadow: var(--shadow);
+        padding: 12px 14px;
+    }
+
+    .training-table tbody td {
+        min-height: 34px;
+        border-bottom: 1px solid var(--border-soft);
+        padding: 10px 0;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 14px;
+        text-align: right;
+        font-size: 15px;
+    }
+
+    .training-table tbody td:last-child {
+        border-bottom: 0;
+    }
+
+    .training-table tbody td::before {
+        content: attr(data-label);
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 700;
+        text-align: left;
+        flex: 0 0 42%;
+    }
+
+    .training-name--button {
+        max-width: 100%;
+        text-align: right;
+        line-height: 1.3;
+    }
+
+    .pagination {
+        gap: 8px;
+    }
+
+    .pagination__btn {
+        min-width: 44px;
+        height: 44px;
+        border-radius: 10px;
+    }
+
+    .editor-card {
+        padding: 18px;
+        border-radius: 14px;
+    }
+
+    .editor-card__header-row,
+    .exercise-card__header,
+    .library-picker__header,
+    .library-picker__item {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .detail-split,
+    .detail-overview-extra {
+        grid-template-columns: 1fr;
+        gap: 16px;
+    }
+
+    .detail-image {
+        height: 220px;
+    }
+
+    .detail-media-placeholder {
+        min-height: 220px;
+    }
+}
+
+@media (max-width: 480px) {
+    .topbar {
+        padding: 8px 10px;
+    }
+
+    .mobile-topbar-title span {
+        display: none;
+    }
+
+    .profile-chip {
+        gap: 8px;
+    }
+
+    .profile-chip__avatar {
+        width: 34px;
+        height: 34px;
+        font-size: 13px;
+    }
+
+    .profile-chip__meta {
+        display: none;
+    }
+
+    #logout-btn {
+        padding: 0 10px;
+        font-size: 14px;
+    }
+
+    .sidebar {
+        width: min(88vw, 310px);
+    }
+}
+
+/* Desktop-Fix: Benutzerbereich in der Topbar wieder ganz rechts */
+@media (min-width: 901px) {
+    .topbar {
+        justify-content: flex-end;
+    }
+
+    .topbar .mobile-topbar-brand {
+        display: none !important;
+    }
+
+    .topbar-actions {
+        width: auto !important;
+        margin-left: auto !important;
+        justify-content: flex-end !important;
+    }
+}
+
+/* Legal-Links bleiben nur in der Topbar, nicht im Seitenmenü */
+.sidebar .nav-link--legal,
+.sidebar__nav .nav-link[data-view="impressum"],
+.sidebar__nav .nav-link[data-view="terms"] {
+    display: none !important;
 }
