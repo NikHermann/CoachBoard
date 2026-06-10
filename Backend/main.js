@@ -1,5 +1,6 @@
 import { fetchTrainingEntries, createTraining, updateTraining, deleteTraining } from "./trainingsService.js";
-import { fetchUsers, createUser, updateUserProfile, deleteUser } from "./usersService.js";
+import { fetchUsers, createUser, updateUserProfile, deleteUser, migrateLegacyUserToFirebaseAuth } from "./usersService.js";
+import { login as loginWithEmail, logout as logoutFromAuth, changeOwnPassword } from "./authService.js";
 
 const STORAGE_KEY = "coachboardCurrentUserId";
 
@@ -402,6 +403,20 @@ function getPasswordValidationError(password) {
   return "";
 }
 
+function getEmailValidationError(email) {
+  const value = String(email || "").trim();
+
+  if (!value) {
+    return "Die E-Mail-Adresse darf nicht leer sein.";
+  }
+
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
+    return "Bitte eine gültige E-Mail-Adresse eingeben.";
+  }
+
+  return "";
+}
+
 function formatDate(value) {
   if (!value) return "—";
 
@@ -459,6 +474,8 @@ function normalizeUser(user) {
   return {
     ...user,
     username: user.username || user.name || "Unbekannt",
+    uid: user.uid || user.id || "",
+    email: typeof user.email === "string" ? user.email : "",
     club: user.club || "TSV Ottensheim",
     role: normalizeRole(user.role),
     password: typeof user.password === "string" ? user.password : ""
@@ -1833,13 +1850,20 @@ function renderUserManagementView() {
       .map((user) => {
         const isCurrentUser = state.currentUser && user.id === state.currentUser.id;
         const safeUsername = escapeHtml(user.username);
+        const safeUid = escapeHtml(user.uid || user.id);
+        const safeEmail = escapeHtml(user.email || "Noch nicht migriert");
         const safeClub = escapeHtml(user.club || "");
 
         return `
           <tr>
             <td data-label="Benutzer">
               <strong>${safeUsername}</strong>
+              <span class="table-muted">UID: ${safeUid}</span>
               ${isCurrentUser ? `<span class="detail-pill" style="margin-left: 8px;">Du</span>` : ""}
+            </td>
+
+            <td data-label="E-Mail">
+              ${safeEmail}
             </td>
 
             <td data-label="Verein">
@@ -1858,15 +1882,6 @@ function renderUserManagementView() {
                 <option value="trainer" ${normalizeRole(user.role) === "trainer" ? "selected" : ""}>Trainer</option>
                 <option value="admin" ${normalizeRole(user.role) === "admin" ? "selected" : ""}>Admin</option>
               </select>
-            </td>
-
-            <td data-label="Neues Passwort">
-              <input
-                class="field__control user-password-input"
-                type="password"
-                placeholder="Passwort ändern"
-                data-user-id="${user.id}"
-              />
             </td>
 
             <td data-label="Aktion">
@@ -1890,9 +1905,9 @@ function renderUserManagementView() {
       <thead>
         <tr>
           <th>Benutzer</th>
+          <th>E-Mail</th>
           <th>Verein</th>
           <th>Rolle</th>
-          <th>Neues Passwort</th>
           <th>Aktion</th>
         </tr>
       </thead>
@@ -2501,7 +2516,7 @@ function bindEvents() {
     });
   });
 
-  loginForm.addEventListener("submit", (event) => {
+  loginForm.addEventListener("submit", async (event) => {
     event.preventDefault();
 
     const enteredUsername = String(loginUsername.value || "").trim();
@@ -2519,16 +2534,45 @@ function bindEvents() {
       return;
     }
 
-    if (matchedUser.password && matchedUser.password !== enteredPassword) {
-      alert("Das Passwort ist nicht korrekt.");
+    try {
+      if (matchedUser.email) {
+        await loginWithEmail(matchedUser.email, enteredPassword);
+      } else {
+        if (!matchedUser.password || matchedUser.password !== enteredPassword) {
+          alert("Das Passwort ist nicht korrekt.");
+          return;
+        }
+
+        const enteredEmail = String(window.prompt("Bitte gib einmalig deine E-Mail-Adresse für die sichere Anmeldung ein:") || "")
+            .trim()
+            .toLowerCase();
+        const emailError = getEmailValidationError(enteredEmail);
+
+        if (emailError) {
+          alert(emailError);
+          return;
+        }
+
+        await migrateLegacyUserToFirebaseAuth(matchedUser.id, enteredEmail, enteredPassword);
+        await loginWithEmail(enteredEmail, enteredPassword);
+        await loadAll();
+      }
+    } catch (error) {
+      console.error("Fehler beim Login:", error);
+      alert("Anmeldung fehlgeschlagen. Bitte Benutzername, E-Mail-Migration und Passwort prüfen.");
       return;
     }
+
+    const currentUser = state.users.find((user) => user.id === matchedUser.id) || {
+      ...matchedUser,
+      email: matchedUser.email || ""
+    };
 
     state.activeView = "library";
     state.currentPage = 1;
     loginUsername.value = "";
     loginPassword.value = "";
-    setCurrentUser(matchedUser);
+    setCurrentUser(currentUser);
   });
 
   registerForm.addEventListener("submit", async (event) => {
@@ -2536,11 +2580,12 @@ function bindEvents() {
 
     const formData = new FormData(registerForm);
     const username = String(formData.get("username") || "").trim();
+    const email = String(formData.get("email") || "").trim().toLowerCase();
     const club = String(formData.get("club") || "").trim();
     const password = String(formData.get("password") || "").trim();
 
-    if (!username || !club || !password) {
-      alert("Bitte Benutzername, Verein und Passwort angeben.");
+    if (!username || !email || !club || !password) {
+      alert("Bitte Benutzername, E-Mail, Verein und Passwort angeben.");
       return;
     }
 
@@ -2550,13 +2595,20 @@ function bindEvents() {
       return;
     }
 
+    const emailError = getEmailValidationError(email);
+    if (emailError) {
+      alert(emailError);
+      return;
+    }
+
     const passwordError = getPasswordValidationError(password);
     if (passwordError) {
       alert(passwordError);
       return;
     }
 
-    await createUser(null, { username, club, role: "trainer", password });
+    await createUser(null, { username, email, club, role: "trainer", password });
+    await loginWithEmail(email, password);
     await loadAll();
 
     const createdUser = findNewestMatchingUser(username, club, "trainer");
@@ -2614,6 +2666,11 @@ function bindEvents() {
       return;
     }
 
+    if (!currentPassword) {
+      alert("Bitte aktuelles Passwort eingeben.");
+      return;
+    }
+
     if (newPassword !== repeatPassword) {
       alert("Die neuen Passwörter stimmen nicht überein.");
       return;
@@ -2625,16 +2682,13 @@ function bindEvents() {
       return;
     }
 
-    if (state.currentUser.password && state.currentUser.password !== currentPassword) {
-      alert("Das aktuelle Passwort ist nicht korrekt.");
+    try {
+      await changeOwnPassword(currentPassword, newPassword);
+    } catch (error) {
+      console.error("Fehler beim Ändern des Passworts:", error);
+      alert("Passwort konnte nicht geändert werden. Bitte prüfe dein aktuelles Passwort.");
       return;
     }
-
-    const result = await updateUserProfile(state.currentUser.id, {
-      password: newPassword
-    });
-
-    if (!result) return;
 
     await loadAll();
     state.activeView = "profile";
@@ -2674,11 +2728,12 @@ function bindEvents() {
 
       const formData = new FormData(adminCreateUserForm);
       const username = String(formData.get("username") || "").trim();
+      const email = String(formData.get("email") || "").trim().toLowerCase();
       const club = String(formData.get("club") || "").trim();
       const role = String(formData.get("role") || "").trim();
       const password = String(formData.get("password") || "").trim();
 
-      if (!username || !club || !role || !password) {
+      if (!username || !email || !club || !role || !password) {
         alert("Bitte alle Felder ausfüllen.");
         return;
       }
@@ -2689,13 +2744,19 @@ function bindEvents() {
         return;
       }
 
+      const emailError = getEmailValidationError(email);
+      if (emailError) {
+        alert(emailError);
+        return;
+      }
+
       const passwordError = getPasswordValidationError(password);
       if (passwordError) {
         alert(passwordError);
         return;
       }
 
-      await createUser(null, { username, club, role, password });
+      await createUser(null, { username, email, club, role, password });
 
       adminCreateUserForm.reset();
       adminCreateUserForm.querySelector('[name="club"]').value = "TSV Ottensheim";
@@ -2718,11 +2779,12 @@ function bindEvents() {
 
       const formData = new FormData(userManagementCreateForm);
       const username = String(formData.get("username") || "").trim();
+      const email = String(formData.get("email") || "").trim().toLowerCase();
       const club = String(formData.get("club") || "").trim();
       const role = normalizeRole(formData.get("role"));
       const password = String(formData.get("password") || "").trim();
 
-      if (!username || !club || !role || !password) {
+      if (!username || !email || !club || !role || !password) {
         alert("Bitte alle Felder ausfüllen.");
         return;
       }
@@ -2733,13 +2795,19 @@ function bindEvents() {
         return;
       }
 
+      const emailError = getEmailValidationError(email);
+      if (emailError) {
+        alert(emailError);
+        return;
+      }
+
       const passwordError = getPasswordValidationError(password);
       if (passwordError) {
         alert(passwordError);
         return;
       }
 
-      await createUser(null, { username, club, role, password });
+      await createUser(null, { username, email, club, role, password });
 
       userManagementCreateForm.reset();
       userManagementCreateForm.querySelector('[name="club"]').value = "TSV Ottensheim";
@@ -2798,11 +2866,9 @@ function bindEvents() {
       if (saveButton) {
         const clubInput = userManagementTableWrap.querySelector(`.user-club-input[data-user-id="${userId}"]`);
         const roleSelect = userManagementTableWrap.querySelector(`.user-role-select[data-user-id="${userId}"]`);
-        const passwordInput = userManagementTableWrap.querySelector(`.user-password-input[data-user-id="${userId}"]`);
 
         const selectedClub = String(clubInput?.value || "").trim();
         const selectedRole = normalizeRole(roleSelect?.value);
-        const newPassword = String(passwordInput?.value || "").trim();
 
         if (!selectedClub) {
           alert("Der Verein darf nicht leer sein.");
@@ -2813,16 +2879,6 @@ function bindEvents() {
           club: selectedClub,
           role: selectedRole
         };
-
-        if (newPassword) {
-          const passwordError = getPasswordValidationError(newPassword);
-          if (passwordError) {
-            alert(passwordError);
-            return;
-          }
-
-          payload.password = newPassword;
-        }
 
         const result = await updateUserProfile(user.id, payload);
 
@@ -3194,9 +3250,10 @@ function bindEvents() {
     await loadAll();
   });
 
-  logoutBtn.addEventListener("click", () => {
+  logoutBtn.addEventListener("click", async () => {
     closeMobileMenu();
     resetTrainingCreateForm();
+    await logoutFromAuth().catch((error) => console.error("Fehler beim Logout:", error));
     setCurrentUser(null);
     setAuthTab("login");
     loginUsername.value = "";

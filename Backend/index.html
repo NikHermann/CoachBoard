@@ -81,6 +81,18 @@
         </label>
 
         <label class="field">
+          <span class="field__label">E-Mail</span>
+          <input
+                  class="field__control"
+                  type="email"
+                  name="email"
+                  placeholder="name@example.com"
+                  autocomplete="email"
+                  required
+          />
+        </label>
+
+        <label class="field">
           <span class="field__label">Passwort</span>
           <input
                   class="field__control"
@@ -652,6 +664,11 @@
             </label>
 
             <label class="field">
+              <span class="field__label">E-Mail</span>
+              <input class="field__control" type="email" name="email" placeholder="name@example.com" required />
+            </label>
+
+            <label class="field">
               <span class="field__label">Verein</span>
               <input
                       class="field__control"
@@ -692,7 +709,7 @@
         <section class="table-block">
           <h3 class="table-block__title">Vorhandene Benutzer</h3>
           <p class="table-block__hint">
-            Admins können hier Rollen und Passwörter ändern.
+            Admins können hier Rollen und Vereinszuordnungen ändern.
           </p>
 
           <div id="user-management-table-wrap" class="table-card"></div>
@@ -771,6 +788,11 @@
             <label class="field">
               <span class="field__label">Benutzername</span>
               <input class="field__control" type="text" name="username" placeholder="Name" required />
+            </label>
+
+            <label class="field">
+              <span class="field__label">E-Mail</span>
+              <input class="field__control" type="email" name="email" placeholder="name@example.com" required />
             </label>
 
             <label class="field">
