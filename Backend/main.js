@@ -7,6 +7,8 @@ import {
 } from "./aiBackendService.js";
 
 const STORAGE_KEY = "coachboardCurrentUserId";
+let initialDataLoadPromise = null;
+let loginInProgress = false;
 
 const state = {
   activeView: "library",
@@ -42,6 +44,10 @@ const ROUTE_PATHS = {
 };
 
 function getRoutePathFromState() {
+  if (state.activeView === "library" && window.location.pathname === "/") {
+    return "/";
+  }
+
   if (state.activeView === "training-detail" && state.selectedTrainingId) {
     return `/training/${encodeURIComponent(state.selectedTrainingId)}`;
   }
@@ -2479,9 +2485,11 @@ async function loadAll(options = {}) {
     }
 
     render();
+    return true;
   } catch (error) {
     console.error("Fehler beim Laden:", error);
     alert("Fehler beim Laden. Schau in die Browser-Konsole.");
+    return false;
   }
 }
 
@@ -2598,7 +2606,7 @@ function bindEvents() {
     });
   });
 
-  loginForm.addEventListener("submit", (event) => {
+  loginForm.addEventListener("submit", async (event) => {
     event.preventDefault();
 
     const enteredUsername = String(loginUsername.value || "").trim();
@@ -2609,23 +2617,45 @@ function bindEvents() {
       return;
     }
 
-    const matchedUser = state.users.find((user) => user.username === enteredUsername);
-
-    if (!matchedUser) {
-      alert("Benutzername nicht gefunden.");
+    if (loginInProgress) {
       return;
     }
 
-    if (matchedUser.password && matchedUser.password !== enteredPassword) {
-      alert("Das Passwort ist nicht korrekt.");
-      return;
-    }
+    loginInProgress = true;
 
-    state.activeView = "library";
-    state.currentPage = 1;
-    loginUsername.value = "";
-    loginPassword.value = "";
-    setCurrentUser(matchedUser);
+    try {
+      let dataLoaded = initialDataLoadPromise ? await initialDataLoadPromise : false;
+
+      if (!dataLoaded) {
+        initialDataLoadPromise = loadAll({ applyRoute: true });
+        dataLoaded = await initialDataLoadPromise;
+      }
+
+      if (!dataLoaded) {
+        alert("Benutzerdaten konnten nicht geladen werden. Bitte versuche es erneut.");
+        return;
+      }
+
+      const matchedUser = state.users.find((user) => user.username === enteredUsername);
+
+      if (!matchedUser) {
+        alert("Benutzername nicht gefunden.");
+        return;
+      }
+
+      if (matchedUser.password && matchedUser.password !== enteredPassword) {
+        alert("Das Passwort ist nicht korrekt.");
+        return;
+      }
+
+      state.activeView = "library";
+      state.currentPage = 1;
+      loginUsername.value = "";
+      loginPassword.value = "";
+      setCurrentUser(matchedUser);
+    } finally {
+      loginInProgress = false;
+    }
   });
 
   registerForm.addEventListener("submit", async (event) => {
@@ -3326,4 +3356,4 @@ window.addEventListener("popstate", () => {
 
 bindEvents();
 setAuthTab("login");
-loadAll({ applyRoute: true });
+initialDataLoadPromise = loadAll({ applyRoute: true });
