@@ -2,11 +2,13 @@ import { db } from "./firebase.js";
 import {
   collection,
   getDocs,
-  addDoc,
   doc,
+  setDoc,
   updateDoc,
-  deleteDoc
+  deleteDoc,
+  deleteField
 } from "firebase/firestore";
+import { createAuthAccount } from "./authService.js";
 
 function normalizeRole(role) {
   const value = String(role || "").trim().toLowerCase();
@@ -50,11 +52,27 @@ function getPasswordValidationError(password) {
   return "";
 }
 
+function getEmailValidationError(email) {
+  const value = String(email || "").trim();
+
+  if (!value) {
+    return "Die E-Mail-Adresse darf nicht leer sein.";
+  }
+
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
+    return "Bitte eine gültige E-Mail-Adresse eingeben.";
+  }
+
+  return "";
+}
+
 function normalizeUser(userDoc) {
   const data = userDoc.data();
 
   return {
     id: userDoc.id,
+    uid: data.uid || userDoc.id,
+    email: typeof data.email === "string" ? data.email : "",
     username: data.username || data.name || userDoc.id,
     club: data.club || "TSV Ottensheim",
     role: normalizeRole(data.role),
@@ -73,18 +91,25 @@ export async function fetchUsers() {
 export async function createUser(reloadUsers, userData = null) {
   if (userData && typeof userData === "object") {
     const username = String(userData.username || "").trim();
+    const email = String(userData.email || "").trim().toLowerCase();
     const club = String(userData.club || "").trim();
     const role = normalizeRole(userData.role);
     const password = String(userData.password || "").trim();
 
-    if (!username || !club || !role) {
-      alert("Bitte Benutzername, Verein und Rolle angeben.");
+    if (!username || !email || !club || !role) {
+      alert("Bitte Benutzername, E-Mail, Verein und Rolle angeben.");
       return null;
     }
 
     const usernameError = getUsernameValidationError(username);
     if (usernameError) {
       alert(usernameError);
+      return null;
+    }
+
+    const emailError = getEmailValidationError(email);
+    if (emailError) {
+      alert(emailError);
       return null;
     }
 
@@ -95,11 +120,14 @@ export async function createUser(reloadUsers, userData = null) {
     }
 
     try {
-      const docRef = await addDoc(collection(db, "users"), {
+      const uid = await createAuthAccount(email, password);
+
+      await setDoc(doc(db, "users", uid), {
+        uid,
+        email,
         username,
         club,
-        role,
-        password
+        role
       });
 
       if (typeof reloadUsers === "function") {
@@ -107,11 +135,12 @@ export async function createUser(reloadUsers, userData = null) {
       }
 
       return {
-        id: docRef.id,
+        id: uid,
+        uid,
+        email,
         username,
         club,
-        role,
-        password
+        role
       };
     } catch (error) {
       console.error("Fehler beim Erstellen des Users:", error);
@@ -122,6 +151,9 @@ export async function createUser(reloadUsers, userData = null) {
 
   const username = String(prompt("Benutzername:") || "").trim();
   if (!username) return null;
+
+  const email = String(prompt("E-Mail-Adresse:") || "").trim().toLowerCase();
+  if (!email) return null;
 
   const club = String(prompt("Verein/Club:") || "").trim();
   if (!club) return null;
@@ -137,6 +169,12 @@ export async function createUser(reloadUsers, userData = null) {
     return null;
   }
 
+  const emailError = getEmailValidationError(email);
+  if (emailError) {
+    alert(emailError);
+    return null;
+  }
+
   const passwordError = getPasswordValidationError(password);
   if (passwordError) {
     alert(passwordError);
@@ -144,11 +182,14 @@ export async function createUser(reloadUsers, userData = null) {
   }
 
   try {
-    const docRef = await addDoc(collection(db, "users"), {
+    const uid = await createAuthAccount(email, password);
+
+    await setDoc(doc(db, "users", uid), {
+      uid,
+      email,
       username,
       club,
-      role,
-      password
+      role
     });
 
     if (typeof reloadUsers === "function") {
@@ -156,11 +197,12 @@ export async function createUser(reloadUsers, userData = null) {
     }
 
     return {
-      id: docRef.id,
+      id: uid,
+      uid,
+      email,
       username,
       club,
-      role,
-      password
+      role
     };
   } catch (error) {
     console.error("Fehler beim Erstellen des Users:", error);
@@ -181,9 +223,6 @@ export async function updateUserProfile(userId, updates, reloadUsers) {
   const club = updates?.club !== undefined
       ? String(updates.club || "").trim()
       : undefined;
-  const password = typeof updates?.password === "string"
-      ? updates.password.trim()
-      : undefined;
   const role = updates?.role ? normalizeRole(updates.role) : undefined;
 
   if (username !== undefined) {
@@ -199,14 +238,6 @@ export async function updateUserProfile(userId, updates, reloadUsers) {
     return null;
   }
 
-  if (password !== undefined) {
-    const passwordError = getPasswordValidationError(password);
-    if (passwordError) {
-      alert(passwordError);
-      return null;
-    }
-  }
-
   const updatePayload = {};
 
   if (username !== undefined) {
@@ -215,10 +246,6 @@ export async function updateUserProfile(userId, updates, reloadUsers) {
 
   if (club !== undefined) {
     updatePayload.club = club;
-  }
-
-  if (password !== undefined) {
-    updatePayload.password = password;
   }
 
   if (role !== undefined) {
@@ -243,6 +270,38 @@ export async function updateUserProfile(userId, updates, reloadUsers) {
     alert("Profil konnte nicht aktualisiert werden.");
     return null;
   }
+}
+
+export async function migrateLegacyUserToFirebaseAuth(userId, email, password) {
+  if (!userId) {
+    throw new Error("Benutzer konnte nicht migriert werden.");
+  }
+
+  const normalizedEmail = String(email || "").trim().toLowerCase();
+  const emailError = getEmailValidationError(normalizedEmail);
+
+  if (emailError) {
+    throw new Error(emailError);
+  }
+
+  const passwordError = getPasswordValidationError(password);
+  if (passwordError) {
+    throw new Error(passwordError);
+  }
+
+  const uid = await createAuthAccount(normalizedEmail, password);
+  const payload = {
+    uid,
+    email: normalizedEmail,
+    password: deleteField()
+  };
+
+  await updateDoc(doc(db, "users", userId), payload);
+
+  return {
+    uid,
+    email: normalizedEmail
+  };
 }
 
 export async function deleteUser(userId, reloadUsers) {

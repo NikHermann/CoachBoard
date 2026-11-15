@@ -569,6 +569,13 @@ button {
     vertical-align: middle;
 }
 
+.table-muted {
+    display: block;
+    margin-top: 4px;
+    color: var(--muted);
+    font-size: 0.78rem;
+}
+
 .training-table tbody tr:last-child td {
     border-bottom: 0;
 }
