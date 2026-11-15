@@ -1,5 +1,10 @@
 import { fetchTrainingEntries, createTraining, updateTraining, deleteTraining } from "./trainingsService.js";
 import { fetchUsers, createUser, updateUserProfile, deleteUser } from "./usersService.js";
+import { searchExercisesForAi } from "./aiExerciseService.js";
+import {
+  sendExercisesToBackend,
+  generateTrainingPlanWithAi
+} from "./aiBackendService.js";
 
 const STORAGE_KEY = "coachboardCurrentUserId";
 
@@ -2495,6 +2500,98 @@ function findNewestMatchingUser(username, club, role) {
 }
 
 function bindEvents() {
+
+
+  // KI-Assistent: Chat-Oberfläche
+  const aiToggleBtn = document.getElementById("ai-toggle-btn");
+  const aiChatPanel = document.getElementById("ai-chat-panel");
+  const aiSendBtn = document.getElementById("ai-send-btn");
+  const aiMessageInput = document.getElementById("ai-message-input");
+  const aiChatMessages = document.getElementById("ai-chat-messages");
+
+  aiToggleBtn.addEventListener("click", () => {
+    const isHidden = aiChatPanel.classList.toggle("is-hidden");
+
+    aiToggleBtn.setAttribute(
+        "aria-expanded",
+        String(!isHidden)
+    );
+  });
+
+  aiSendBtn.addEventListener("click", async () => {
+    const message = aiMessageInput.value.trim();
+
+    if (!message) return;
+
+    // Nachricht des Trainers anzeigen
+    const userMessage = document.createElement("div");
+    userMessage.className = "ai-message ai-message--user";
+    userMessage.textContent = message;
+
+    aiChatMessages.appendChild(userMessage);
+
+
+    const botMessage = document.createElement("div");
+    botMessage.className = "ai-message ai-message--bot";
+    botMessage.textContent = "Suche nach passenden Übungen ...";
+
+
+
+    const exercises = searchExercisesForAi(
+        state.exerciseEntries,
+        message
+    );
+
+    if (exercises.length === 0) {
+      botMessage.textContent =
+          "Keine passenden Übungen gefunden. " +
+          `Aktuell sind ${state.exerciseEntries.length} Übungen geladen.`;
+    } else {
+      botMessage.textContent =
+          `${exercises.length} passende Übungen gefunden:\n\n` +
+          exercises
+              .map((exercise) =>
+                  `• ${exercise.name} (${exercise.duration || "?"} Min.)`
+              )
+              .join("\n");
+    }
+
+    botMessage.style.whiteSpace = "pre-line";
+
+
+    aiChatMessages.appendChild(botMessage);
+
+// Übungen an Firebase Functions senden
+    try {
+
+      const result = await sendExercisesToBackend(exercises);
+
+      botMessage.textContent +=
+          `\n\n✓ Backend hat ${result.count} Übungen empfangen.`;
+
+      botMessage.textContent +=
+          "\n\nGemini erstellt deinen Trainingsplan ...";
+
+      const aiResult = await generateTrainingPlanWithAi(
+          message,
+          exercises
+      );
+
+      botMessage.textContent +=
+          `\n\n⚽ KI-Trainingsplan:\n\n${aiResult.trainingPlan}`;
+
+
+    } catch (error) {
+      console.error("Backend-Fehler:", error);
+
+      botMessage.textContent +=
+          "\n\nBackend-Verbindung fehlgeschlagen.";
+    }
+
+    aiMessageInput.value = "";
+    aiChatMessages.scrollTop = aiChatMessages.scrollHeight;
+  });
+
   authTabButtons.forEach((button) => {
     button.addEventListener("click", () => {
       setAuthTab(button.dataset.authTab);

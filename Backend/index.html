@@ -388,6 +388,53 @@
           <h2 id="training-editor-title">Training erstellen</h2>
         </header>
 
+
+        <section class="editor-card ai-assistant">
+          <button
+                  id="ai-toggle-btn"
+                  class="btn btn--primary"
+                  type="button"
+                  aria-expanded="false"
+                  aria-controls="ai-chat-panel"
+          >
+            ✨ Mit KI erstellen
+          </button>
+
+          <div id="ai-chat-panel" class="is-hidden">
+            <h3>KI-Trainingsassistent</h3>
+
+            <p>
+              Beschreibe dein gewünschtes Training.
+              Der Assistent hilft dir bei der Planung.
+            </p>
+
+            <div id="ai-chat-messages" aria-live="polite">
+              <div class="ai-message ai-message--bot">
+                Hallo! Wie kann ich dir bei deiner
+                Trainingsplanung helfen?
+              </div>
+            </div>
+
+            <div class="ai-chat-input">
+      <textarea
+              id="ai-message-input"
+              class="field__control"
+              rows="3"
+              placeholder="Erstelle mir ein 90-minütiges Training für 16 U14-Spieler mit Schwerpunkt Passspiel ..."
+      ></textarea>
+
+              <button
+                      id="ai-send-btn"
+                      type="button"
+                      class="btn btn--primary"
+              >
+                Nachricht senden
+              </button>
+            </div>
+          </div>
+        </section>
+
+
         <form id="training-create-form" class="training-editor">
           <section class="editor-card">
             <h3 class="editor-card__title">Grundinformationen</h3>
