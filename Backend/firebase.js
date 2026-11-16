@@ -2,6 +2,7 @@ import { initializeApp } from "firebase/app";
 import { connectFirestoreEmulator, getFirestore } from "firebase/firestore";
 import { connectAuthEmulator, getAuth } from "firebase/auth";
 import {
+  assertLocalFirebaseSafety,
   isLocalAuthTestMode,
   LOCAL_AUTH_HOST,
   LOCAL_AUTH_PORT,
@@ -9,6 +10,31 @@ import {
   LOCAL_FIRESTORE_HOST,
   LOCAL_FIRESTORE_PORT
 } from "./localAuthTestMode.js";
+
+function blockUnsafeLocalFirebaseInitialization(error) {
+  if (typeof document !== "undefined" && document.body) {
+    document.body.replaceChildren();
+    const message = document.createElement("main");
+    message.setAttribute("role", "alert");
+    message.style.cssText = "max-width:42rem;margin:4rem auto;padding:2rem;font:1rem/1.5 system-ui,sans-serif;";
+
+    const heading = document.createElement("h1");
+    heading.textContent = "Lokaler Firebase-Zugriff blockiert";
+    const description = document.createElement("p");
+    description.textContent = error.message;
+
+    message.append(heading, description);
+    document.body.append(message);
+  }
+
+  throw error;
+}
+
+try {
+  assertLocalFirebaseSafety();
+} catch (error) {
+  blockUnsafeLocalFirebaseInitialization(error);
+}
 
 const productionFirebaseConfig = {
   apiKey: "AIzaSyDZiVeu6XwSUX9T7pzEGEyxZZ2W_nitUag",

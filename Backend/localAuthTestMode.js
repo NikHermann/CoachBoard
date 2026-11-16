@@ -10,6 +10,14 @@ function isLoopbackHost(hostname) {
   return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]";
 }
 
+export class LocalFirebaseSafetyError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "LocalFirebaseSafetyError";
+    this.code = "local-firebase-mode-required";
+  }
+}
+
 export function resolveLocalAuthTestMode(locationLike = globalThis.location) {
   if (!locationLike) return false;
 
@@ -27,6 +35,16 @@ export function resolveLocalAuthTestMode(locationLike = globalThis.location) {
   }
 
   return true;
+}
+
+export function assertLocalFirebaseSafety(locationLike = globalThis.location) {
+  if (!locationLike || !isLoopbackHost(locationLike.hostname)) return;
+
+  if (!resolveLocalAuthTestMode(locationLike)) {
+    throw new LocalFirebaseSafetyError(
+      "Lokaler Firebase-Zugriff wurde blockiert. Starte die Demo-Emulatoren und öffne die Anwendung ausdrücklich mit ?authMode=emulator."
+    );
+  }
 }
 
 export const isLocalAuthTestMode = resolveLocalAuthTestMode();
