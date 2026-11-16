@@ -9,19 +9,30 @@ import {
   sendEmailVerification,
   EmailAuthProvider,
   reauthenticateWithCredential,
-  onAuthStateChanged,
+  onIdTokenChanged,
+  getIdTokenResult,
   reload,
   getAuth
 } from "firebase/auth";
 
 // Beobachtet, ob sich der Login-Zustand ändert
 export function observeAuth(callback) {
-  return onAuthStateChanged(auth, callback);
+  return onIdTokenChanged(auth, callback);
 }
 
 // Login mit E-Mail und Passwort
 export async function login(email, password) {
   return signInWithEmailAndPassword(auth, email, password);
+}
+
+export async function validateCurrentSession() {
+  const user = auth.currentUser;
+  if (!user) {
+    throw Object.assign(new Error("Keine aktive Firebase-Sitzung."), {
+      code: "auth/no-current-user"
+    });
+  }
+  return getIdTokenResult(user, true);
 }
 
 // Erstellt einen Auth-Account in einer zweiten Firebase-App, damit der aktuell

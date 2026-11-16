@@ -6,6 +6,7 @@ import {
   generateTrainingPlanWithAi
 } from "./aiBackendService.js";
 import { createSecureAuthAdapter } from "./secureAuthAdapter.js";
+import { getLoginErrorMessage, getSessionErrorMessage } from "./secureAuthFlow.js";
 import { changeOwnPassword, sendResetMailToEmail } from "./authService.js";
 import { isLocalAuthTestMode } from "./localAuthTestMode.js";
 import { isProductionAuthMode } from "./productionAuthMode.js";
@@ -17,6 +18,7 @@ let initialDataLoadPromise = null;
 let loginInProgress = false;
 let passwordResetInProgress = false;
 let secureAuthFlow = null;
+let secureSessionCheckInProgress = null;
 
 const state = {
   activeView: "library",
@@ -2645,6 +2647,30 @@ function activateSecureAuthMode() {
     void handleSecureAuthState(authState);
   });
   secureAuthFlow.start();
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState !== "visible" || !state.currentUser) return;
+    void requireValidSecureSession();
+  });
+}
+
+async function requireValidSecureSession() {
+  if (!isSecureAuthMode) return true;
+  if (secureSessionCheckInProgress) return secureSessionCheckInProgress;
+
+  secureSessionCheckInProgress = secureAuthFlow.validateSession()
+      .then(() => true)
+      .catch((error) => {
+        if (error?.code === "session-check-network") {
+          alert(getSessionErrorMessage(error.cause || error));
+        }
+        return false;
+      })
+      .finally(() => {
+        secureSessionCheckInProgress = null;
+      });
+
+  return secureSessionCheckInProgress;
 }
 
 function findNewestMatchingUser(username, club, role) {
@@ -2815,8 +2841,8 @@ function bindEvents() {
       setCurrentUser(matchedUser);
     } catch (error) {
       if (isSecureAuthMode) {
-        console.warn("Firebase-Auth-Anmeldung wurde abgewiesen.");
-        alert("Anmeldung fehlgeschlagen. Bitte E-Mail-Adresse und Passwort prüfen.");
+        console.warn("Firebase-Auth-Anmeldung wurde abgewiesen:", error?.code || "unknown");
+        alert(getLoginErrorMessage(error));
       } else {
         throw error;
       }
@@ -2910,6 +2936,7 @@ function bindEvents() {
       return;
     }
 
+    if (!await requireValidSecureSession()) return;
     const result = await updateUserProfile(state.currentUser.id, { username: newUsername });
     if (!result) return;
 
@@ -2953,6 +2980,7 @@ function bindEvents() {
 
     if (isSecureAuthMode) {
       try {
+        if (!await requireValidSecureSession()) return;
         await changeOwnPassword(currentPassword, newPassword);
       } catch {
         alert("Das Passwort konnte nicht geändert werden. Bitte aktuelles Passwort prüfen.");
@@ -3284,6 +3312,7 @@ function bindEvents() {
       return;
     }
 
+    if (!await requireValidSecureSession()) return;
     const deleted = await deleteTraining(training.id, null);
 
     if (!deleted) {
@@ -3540,6 +3569,8 @@ function bindEvents() {
     };
 
     let savedTraining = null;
+
+    if (!await requireValidSecureSession()) return;
 
     if (editingId) {
       savedTraining = await updateTraining(editingId, null, payload);

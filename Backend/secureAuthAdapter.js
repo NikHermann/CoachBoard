@@ -2,11 +2,15 @@
 import { getIdTokenResult } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "./firebase.js";
-import { login, logout, observeAuth } from "./authService.js";
+import { login, logout, observeAuth, validateCurrentSession } from "./authService.js";
 import { createSecureAuthFlow, SecureAuthError } from "./secureAuthFlow.js";
 
-export async function readTokenClaims(user, getTokenResult = getIdTokenResult) {
-  const token = await getTokenResult(user, true);
+export async function readTokenClaims(
+  user,
+  forceRefresh = true,
+  getTokenResult = getIdTokenResult
+) {
+  const token = await getTokenResult(user, forceRefresh);
   return token.claims || {};
 }
 
@@ -46,6 +50,7 @@ export function createSecureAuthAdapter(onStateChange) {
     loginWithEmailPassword: login,
     observeAuthState: observeAuth,
     logoutFromAuth: logout,
+    validateAuthSession: validateCurrentSession,
     readTokenClaims,
     readProfile,
     onStateChange

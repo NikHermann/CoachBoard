@@ -8,7 +8,11 @@ import {
 } from "firebase/auth";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { assertFails } from "@firebase/rules-unit-testing";
-import { createSecureAuthFlow, SecureAuthError } from "../../Backend/secureAuthFlow.js";
+import {
+  createSecureAuthFlow,
+  getLoginErrorMessage,
+  SecureAuthError
+} from "../../Backend/secureAuthFlow.js";
 import { installLocalNetworkGuard } from "./emulatorSafety.js";
 import { SYNTHETIC_ACCOUNTS, SYNTHETIC_DOCUMENT_IDS } from "./fixtures/syntheticAccounts.js";
 import {
@@ -58,7 +62,13 @@ function createEmulatorFlow(states, profileIdOverride = null) {
   });
 }
 
-function createControlledFlow({ user, claims = {}, profile, loginError = null }) {
+function createControlledFlow({
+  user,
+  claims = {},
+  profile,
+  loginError = null,
+  validateAuthSession = async () => true
+}) {
   let observer = null;
   let logoutCalls = 0;
   const states = [];
@@ -75,6 +85,7 @@ function createControlledFlow({ user, claims = {}, profile, loginError = null })
       logoutCalls += 1;
       observer?.(null);
     },
+    validateAuthSession,
     readTokenClaims: async () => claims,
     readProfile: async () => profile,
     onStateChange: (state) => states.push(state)
@@ -130,6 +141,24 @@ test("Ungültiges Passwort wird ausschließlich durch Firebase Auth abgewiesen",
   );
   assert.equal(states.some((state) => state.status === "authenticated"), false);
   flow.dispose();
+});
+
+test("Firebase-Loginfehler werden ohne Passwort- oder Tokenausgabe sinnvoll unterschieden", () => {
+  assert.equal(
+    getLoginErrorMessage({ code: "auth/invalid-credential" }),
+    "Die Anmeldedaten sind ungültig. Bitte E-Mail-Adresse und Passwort erneut eingeben."
+  );
+  assert.equal(
+    getLoginErrorMessage({ code: "auth/wrong-password" }),
+    "Das eingegebene Passwort ist nicht korrekt."
+  );
+  assert.match(getLoginErrorMessage({ code: "auth/user-disabled" }), /deaktiviert/);
+  assert.match(getLoginErrorMessage({ code: "auth/too-many-requests" }), /Zu viele/);
+  assert.match(getLoginErrorMessage({ code: "auth/network-request-failed" }), /Netzwerk/);
+  assert.doesNotMatch(
+    getLoginErrorMessage({ code: "auth/internal-error", message: "secret-value" }),
+    /secret-value/
+  );
 });
 
 test("Browser-Neuladen wird durch einen neuen Observer auf derselben Auth-Sitzung wiederhergestellt", async () => {
@@ -301,6 +330,47 @@ test("Abgelaufene oder entzogene Sitzung wird durch Auth-Observer beendet", asyn
   controlled.emit(null);
   await waitForState(controlled.states, (state) => state.status === "signed-out");
   assert.equal(controlled.flow.getState().user, null);
+  controlled.flow.dispose();
+});
+
+test("Widerrufene Sitzung wird bei der nächsten erzwungenen Prüfung sicher abgemeldet", async () => {
+  const user = { uid: "revoked-session-user", email: "revoked@example.invalid" };
+  const controlled = createControlledFlow({
+    user,
+    profile: { uid: user.uid, email: user.email },
+    validateAuthSession: async () => {
+      throw Object.assign(new Error("revoked"), { code: "auth/user-token-expired" });
+    }
+  });
+
+  controlled.flow.start();
+  controlled.emit(user);
+  await waitForState(controlled.states, (state) => state.status === "authenticated");
+  await assert.rejects(() => controlled.flow.validateSession(), { code: "session-invalid" });
+  assert.equal(controlled.getLogoutCalls(), 1);
+  assert.equal(controlled.flow.getState().status, "signed-out");
+  controlled.flow.dispose();
+});
+
+test("Parallele Sitzungsprüfungen verwenden nur einen Token-Refresh", async () => {
+  let validationCalls = 0;
+  let releaseValidation;
+  const validation = new Promise((resolve) => { releaseValidation = resolve; });
+  const controlled = createControlledFlow({
+    user: { uid: "parallel-session-user" },
+    profile: { uid: "parallel-session-user" },
+    validateAuthSession: async () => {
+      validationCalls += 1;
+      await validation;
+    }
+  });
+
+  const first = controlled.flow.validateSession();
+  const second = controlled.flow.validateSession();
+  releaseValidation();
+  assert.equal(await first, true);
+  assert.equal(await second, true);
+  assert.equal(validationCalls, 1);
   controlled.flow.dispose();
 });
 

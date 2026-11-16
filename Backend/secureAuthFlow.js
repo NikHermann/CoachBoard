@@ -9,6 +9,46 @@ export class SecureAuthError extends Error {
   }
 }
 
+export function getLoginErrorMessage(error) {
+  switch (error?.code) {
+    case "auth/invalid-credential":
+    case "auth/user-not-found":
+      return "Die Anmeldedaten sind ungültig. Bitte E-Mail-Adresse und Passwort erneut eingeben.";
+    case "auth/wrong-password":
+      return "Das eingegebene Passwort ist nicht korrekt.";
+    case "auth/invalid-email":
+      return "Bitte eine gültige E-Mail-Adresse eingeben.";
+    case "auth/user-disabled":
+      return "Dieses Benutzerkonto ist deaktiviert.";
+    case "auth/too-many-requests":
+      return "Zu viele Anmeldeversuche. Bitte später erneut versuchen oder das Passwort zurücksetzen.";
+    case "auth/network-request-failed":
+      return "Firebase Authentication ist derzeit nicht erreichbar. Bitte die Netzwerkverbindung prüfen.";
+    case "auth/operation-not-allowed":
+      return "Die E-Mail-/Passwort-Anmeldung ist für dieses Firebase-Projekt nicht aktiviert.";
+    default:
+      return "Die Anmeldung ist wegen eines unerwarteten Firebase-Fehlers fehlgeschlagen.";
+  }
+}
+
+const INVALID_SESSION_CODES = new Set([
+  "auth/id-token-expired",
+  "auth/invalid-user-token",
+  "auth/user-token-expired",
+  "auth/user-disabled",
+  "auth/no-current-user"
+]);
+
+export function getSessionErrorMessage(error) {
+  if (error?.code === "auth/network-request-failed") {
+    return "Die Sitzung konnte wegen eines Netzwerkfehlers nicht geprüft werden. Die Aktion wurde nicht ausgeführt.";
+  }
+  if (INVALID_SESSION_CODES.has(error?.code) || error?.code === "session-invalid") {
+    return "Die Firebase-Sitzung ist nicht mehr gültig. Bitte erneut anmelden.";
+  }
+  return "Die Firebase-Sitzung konnte nicht sicher bestätigt werden. Bitte erneut anmelden.";
+}
+
 function normalizeEmail(email) {
   return String(email || "").trim().toLowerCase();
 }
@@ -74,6 +114,7 @@ export function createSecureAuthFlow(dependencies) {
     loginWithEmailPassword,
     observeAuthState,
     logoutFromAuth,
+    validateAuthSession = async () => true,
     readTokenClaims,
     readProfile,
     onStateChange = () => {}
@@ -84,7 +125,8 @@ export function createSecureAuthFlow(dependencies) {
     observeAuthState,
     logoutFromAuth,
     readTokenClaims,
-    readProfile
+    readProfile,
+    validateAuthSession
   })) {
     if (typeof dependency !== "function") {
       throw new TypeError(`Fehlende Auth-Abhängigkeit: ${name}`);
@@ -94,6 +136,8 @@ export function createSecureAuthFlow(dependencies) {
   let disposed = false;
   let generation = 0;
   let unsubscribe = null;
+  let validationPromise = null;
+  let observedUid = null;
   let state = Object.freeze({ status: "idle", user: null, profile: null, role: null, error: null });
 
   function publish(nextState) {
@@ -102,10 +146,11 @@ export function createSecureAuthFlow(dependencies) {
     onStateChange(state);
   }
 
-  async function handleAuthState(user) {
+  async function handleAuthState(user, forceRefresh = false) {
     const currentGeneration = ++generation;
 
     if (!user) {
+      observedUid = null;
       publish({ status: "signed-out", user: null, profile: null, role: null, error: null });
       return;
     }
@@ -113,7 +158,7 @@ export function createSecureAuthFlow(dependencies) {
     publish({ status: "loading-profile", user, profile: null, role: null, error: null });
 
     try {
-      const claims = await readTokenClaims(user);
+      const claims = await readTokenClaims(user, forceRefresh);
       const profileId = getProfileId(user, claims);
       const rawProfile = await readProfile(profileId, user, claims);
       const profile = sanitizeProfile(rawProfile, user, profileId);
@@ -132,9 +177,13 @@ export function createSecureAuthFlow(dependencies) {
 
       const safeError = error instanceof SecureAuthError
         ? error
-        : new SecureAuthError("profile-load-failed", "Das geschützte Profil konnte nicht geladen werden.", {
-          cause: error
-        });
+        : INVALID_SESSION_CODES.has(error?.code)
+          ? new SecureAuthError("session-invalid", getSessionErrorMessage(error), { cause: error })
+          : error?.code === "auth/network-request-failed"
+            ? new SecureAuthError("session-check-network", getSessionErrorMessage(error), { cause: error })
+            : new SecureAuthError("profile-load-failed", "Das geschützte Profil konnte nicht geladen werden.", {
+              cause: error
+            });
 
       publish({ status: "error", user: null, profile: null, role: null, error: safeError });
       await logoutFromAuth().catch(() => {});
@@ -149,7 +198,10 @@ export function createSecureAuthFlow(dependencies) {
 
       if (!unsubscribe) {
         unsubscribe = observeAuthState((user) => {
-          void handleAuthState(user);
+          const nextUid = String(user?.uid || "");
+          const forceRefresh = Boolean(nextUid && nextUid !== observedUid);
+          observedUid = nextUid || null;
+          void handleAuthState(user, forceRefresh);
         });
       }
 
@@ -186,6 +238,32 @@ export function createSecureAuthFlow(dependencies) {
     async logout() {
       ++generation;
       await logoutFromAuth();
+    },
+
+    async validateSession() {
+      if (validationPromise) return validationPromise;
+
+      validationPromise = (async () => {
+        try {
+          await validateAuthSession();
+          return true;
+        } catch (error) {
+          if (error?.code === "auth/network-request-failed") {
+            throw new SecureAuthError("session-check-network", getSessionErrorMessage(error), { cause: error });
+          }
+
+          const sessionError = new SecureAuthError("session-invalid", getSessionErrorMessage(error), {
+            cause: error
+          });
+          publish({ status: "error", user: null, profile: null, role: null, error: sessionError });
+          await logoutFromAuth().catch(() => {});
+          throw sessionError;
+        } finally {
+          validationPromise = null;
+        }
+      })();
+
+      return validationPromise;
     },
 
     getState() {

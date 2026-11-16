@@ -9,7 +9,7 @@ import { SecureAuthError } from "../../Backend/secureAuthFlow.js";
 test("Claims werden beim Profilabruf zwingend aus einem aktualisierten ID-Token gelesen", async () => {
   const user = { uid: "synthetic-auth-uid" };
   const calls = [];
-  const claims = await readTokenClaims(user, async (...args) => {
+  const claims = await readTokenClaims(user, true, async (...args) => {
     calls.push(args);
     return { claims: { role: "admin", profile_id: "different-profile-document" } };
   });
