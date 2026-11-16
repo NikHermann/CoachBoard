@@ -6,6 +6,7 @@ export class SecureAuthError extends Error {
     super(message, options);
     this.name = "SecureAuthError";
     this.code = code;
+    this.phase = options.phase || null;
   }
 }
 
@@ -17,7 +18,11 @@ export function getLoginErrorMessage(error) {
     case "auth/wrong-password":
       return "Das eingegebene Passwort ist nicht korrekt.";
     case "auth/invalid-email":
+    case "invalid-email":
       return "Bitte eine gültige E-Mail-Adresse eingeben.";
+    case "missing-password":
+    case "auth/missing-password":
+      return "Bitte ein Passwort eingeben.";
     case "auth/user-disabled":
       return "Dieses Benutzerkonto ist deaktiviert.";
     case "auth/too-many-requests":
@@ -29,6 +34,18 @@ export function getLoginErrorMessage(error) {
     default:
       return "Die Anmeldung ist wegen eines unerwarteten Firebase-Fehlers fehlgeschlagen.";
   }
+}
+
+const SAFE_DIAGNOSTIC_VALUE = /^[a-z0-9][a-z0-9/_-]{0,80}$/i;
+
+export function getSafeAuthDiagnostic(error, fallbackPhase = "internal") {
+  const phase = SAFE_DIAGNOSTIC_VALUE.test(String(error?.phase || ""))
+    ? String(error.phase)
+    : fallbackPhase;
+  const code = SAFE_DIAGNOSTIC_VALUE.test(String(error?.code || ""))
+    ? String(error.code)
+    : "internal/unknown";
+  return Object.freeze({ phase, code });
 }
 
 const INVALID_SESSION_CODES = new Set([
@@ -180,11 +197,18 @@ export function createSecureAuthFlow(dependencies) {
       const safeError = error instanceof SecureAuthError
         ? error
         : INVALID_SESSION_CODES.has(error?.code)
-          ? new SecureAuthError("session-invalid", getSessionErrorMessage(error), { cause: error })
+          ? new SecureAuthError("session-invalid", getSessionErrorMessage(error), {
+            cause: error,
+            phase: error?.phase || "token-refresh"
+          })
           : error?.code === "auth/network-request-failed"
-            ? new SecureAuthError("session-check-network", getSessionErrorMessage(error), { cause: error })
+            ? new SecureAuthError("session-check-network", getSessionErrorMessage(error), {
+              cause: error,
+              phase: error?.phase || "token-refresh"
+            })
             : new SecureAuthError("profile-load-failed", "Das geschützte Profil konnte nicht geladen werden.", {
-              cause: error
+              cause: error,
+              phase: error?.phase || "profile-load"
             });
 
       publish({ status: "error", user: null, profile: null, role: null, error: safeError });
@@ -266,11 +290,15 @@ export function createSecureAuthFlow(dependencies) {
           return true;
         } catch (error) {
           if (error?.code === "auth/network-request-failed") {
-            throw new SecureAuthError("session-check-network", getSessionErrorMessage(error), { cause: error });
+            throw new SecureAuthError("session-check-network", getSessionErrorMessage(error), {
+              cause: error,
+              phase: error?.phase || "token-refresh"
+            });
           }
 
           const sessionError = new SecureAuthError("session-invalid", getSessionErrorMessage(error), {
-            cause: error
+            cause: error,
+            phase: error?.phase || "token-refresh"
           });
           publish({ status: "error", user: null, profile: null, role: null, error: sessionError });
           await logoutFromAuth().catch(() => {});

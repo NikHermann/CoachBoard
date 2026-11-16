@@ -6,7 +6,11 @@ import {
   generateTrainingPlanWithAi
 } from "./aiBackendService.js";
 import { createSecureAuthAdapter } from "./secureAuthAdapter.js";
-import { getLoginErrorMessage, getSessionErrorMessage } from "./secureAuthFlow.js";
+import {
+  getLoginErrorMessage,
+  getSafeAuthDiagnostic,
+  getSessionErrorMessage
+} from "./secureAuthFlow.js";
 import { changeOwnPassword, sendResetMailToEmail } from "./authService.js";
 import { isLocalAuthTestMode } from "./localAuthTestMode.js";
 import { isProductionAuthMode } from "./productionAuthMode.js";
@@ -2606,7 +2610,13 @@ async function handleSecureAuthState(authState) {
 
   if (authState.status === "error") {
     clearAuthenticatedData();
-    alert(authState.error?.message || "Die sichere Anmeldung ist fehlgeschlagen.");
+    const diagnostic = getSafeAuthDiagnostic(
+        authState.error,
+        authState.error?.code?.startsWith("profile-") ? "profile-load" : "token-refresh"
+    );
+    console.warn("CoachBoard Auth-Diagnose:", diagnostic);
+    alert(`${authState.error?.message || "Die sichere Anmeldung ist fehlgeschlagen."}\n`
+      + `Diagnose: ${diagnostic.phase}: ${diagnostic.code}`);
     return;
   }
 
@@ -2841,8 +2851,9 @@ function bindEvents() {
       setCurrentUser(matchedUser);
     } catch (error) {
       if (isSecureAuthMode) {
-        console.warn("Firebase-Auth-Anmeldung wurde abgewiesen:", error?.code || "unknown");
-        alert(getLoginErrorMessage(error));
+        const diagnostic = getSafeAuthDiagnostic(error, "sign-in");
+        console.warn("CoachBoard Auth-Diagnose:", diagnostic);
+        alert(`${getLoginErrorMessage(error)}\nDiagnose: ${diagnostic.phase}: ${diagnostic.code}`);
       } else {
         throw error;
       }

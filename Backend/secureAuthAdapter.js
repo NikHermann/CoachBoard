@@ -10,8 +10,16 @@ export async function readTokenClaims(
   forceRefresh = true,
   getTokenResult = getIdTokenResult
 ) {
-  const token = await getTokenResult(user, forceRefresh);
-  return token.claims || {};
+  try {
+    const token = await getTokenResult(user, forceRefresh);
+    return token.claims || {};
+  } catch (error) {
+    throw new SecureAuthError(
+      error?.code || "token-refresh-failed",
+      "Das Firebase-ID-Token konnte nicht aktualisiert werden.",
+      { cause: error, phase: "token-refresh" }
+    );
+  }
 }
 
 export async function readProfile(
@@ -27,19 +35,23 @@ export async function readProfile(
       throw new SecureAuthError(
         "profile-permission-denied",
         "Der Zugriff auf das zugeordnete Profil wurde von Firestore abgewiesen.",
-        { cause: error }
+        { cause: error, phase: "profile-load" }
       );
     }
 
     throw new SecureAuthError(
       "profile-read-failed",
       "Das zugeordnete Profil konnte wegen eines Firebase-Fehlers nicht geladen werden.",
-      { cause: error }
+      { cause: error, phase: "profile-load" }
     );
   }
 
   if (!snapshot.exists()) {
-    throw new SecureAuthError("profile-missing", "Für dieses Konto ist kein Profil verfügbar.");
+    throw new SecureAuthError(
+      "profile-missing",
+      "Für dieses Konto ist kein Profil verfügbar.",
+      { phase: "profile-load" }
+    );
   }
 
   return snapshot.data();

@@ -11,6 +11,7 @@ import { assertFails } from "@firebase/rules-unit-testing";
 import {
   createSecureAuthFlow,
   getLoginErrorMessage,
+  getSafeAuthDiagnostic,
   SecureAuthError
 } from "../../Backend/secureAuthFlow.js";
 import { installLocalNetworkGuard } from "./emulatorSafety.js";
@@ -158,6 +159,22 @@ test("Firebase-Loginfehler werden ohne Passwort- oder Tokenausgabe sinnvoll unte
   assert.doesNotMatch(
     getLoginErrorMessage({ code: "auth/internal-error", message: "secret-value" }),
     /secret-value/
+  );
+});
+
+test("Sichere Auth-Diagnose enthält nur Phase und Fehlercode", () => {
+  assert.deepEqual(
+    getSafeAuthDiagnostic({
+      phase: "token-refresh",
+      code: "auth/invalid-user-token",
+      message: "contains-sensitive-details",
+      token: "never-log-this"
+    }),
+    { phase: "token-refresh", code: "auth/invalid-user-token" }
+  );
+  assert.deepEqual(
+    getSafeAuthDiagnostic({ phase: "sign-in\nsecret", code: "invalid code with spaces" }, "sign-in"),
+    { phase: "sign-in", code: "internal/unknown" }
   );
 });
 

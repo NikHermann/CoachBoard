@@ -71,3 +71,25 @@ test("Fehlendes Profil und Firestore-Berechtigungsfehler bleiben unterscheidbar"
     (error) => error instanceof SecureAuthError && error.code === "profile-read-failed"
   );
 });
+
+test("Token- und Profilfehler tragen eine sichere Diagnosephase", async () => {
+  await assert.rejects(
+    () => readTokenClaims({}, true, async () => {
+      throw Object.assign(new Error("sensitive detail"), { code: "auth/internal-error" });
+    }),
+    (error) => error.code === "auth/internal-error"
+      && error.phase === "token-refresh"
+      && error.cause?.message === "sensitive detail"
+  );
+
+  await assert.rejects(
+    () => readProfile("profile", {
+      database: {},
+      document: () => ({}),
+      getDocument: async () => {
+        throw Object.assign(new Error("denied"), { code: "permission-denied" });
+      }
+    }),
+    (error) => error.code === "profile-permission-denied" && error.phase === "profile-load"
+  );
+});

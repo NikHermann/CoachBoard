@@ -22,7 +22,11 @@ export function observeAuth(callback) {
 
 // Login mit E-Mail und Passwort
 export async function login(email, password) {
-  return signInWithEmailAndPassword(auth, email, password);
+  try {
+    return await signInWithEmailAndPassword(auth, email, password);
+  } catch (error) {
+    throw markFirebasePhase(error, "sign-in");
+  }
 }
 
 export async function validateCurrentSession() {
@@ -32,7 +36,33 @@ export async function validateCurrentSession() {
       code: "auth/no-current-user"
     });
   }
-  return getIdTokenResult(user, true);
+  try {
+    return await getIdTokenResult(user, true);
+  } catch (error) {
+    throw markFirebasePhase(error, "token-refresh");
+  }
+}
+
+function markFirebasePhase(error, phase) {
+  if (error && typeof error === "object") {
+    try {
+      Object.defineProperty(error, "phase", {
+        value: phase,
+        configurable: true,
+        enumerable: false
+      });
+      return error;
+    } catch {
+      return Object.assign(new Error("Firebase-Vorgang fehlgeschlagen.", { cause: error }), {
+        code: error?.code || "internal/unknown",
+        phase
+      });
+    }
+  }
+  return Object.assign(new Error("Firebase-Vorgang fehlgeschlagen."), {
+    code: "internal/non-error-rejection",
+    phase
+  });
 }
 
 // Erstellt einen Auth-Account in einer zweiten Firebase-App, damit der aktuell
