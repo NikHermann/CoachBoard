@@ -20,8 +20,18 @@ import { SYNTHETIC_ACCOUNTS, SYNTHETIC_DOCUMENT_IDS } from "./fixtures/synthetic
 const [authHost, authPortText] = AUTH_EMULATOR_HOST.split(":");
 const [firestoreHost, firestorePortText] = FIRESTORE_EMULATOR_HOST.split(":");
 
-export async function createFirebaseTestHarness(testName) {
+const ALLOWED_RULE_FILES = new Set([
+  "firestore.test.rules",
+  "firestore.mitigation.rules",
+  "firestore.target.rules"
+]);
+
+export async function createFirebaseTestHarness(testName, ruleFile = "firestore.test.rules") {
   assertEmulatorSafety();
+
+  if (!ALLOWED_RULE_FILES.has(ruleFile)) {
+    throw new Error(`Nicht freigegebene Firestore-Regeldatei: ${ruleFile}`);
+  }
 
   const app = initializeApp(
     {
@@ -35,7 +45,7 @@ export async function createFirebaseTestHarness(testName) {
   const auth = getAuth(app);
   connectAuthEmulator(auth, `http://${authHost}:${Number(authPortText)}`, { disableWarnings: true });
 
-  const rules = fs.readFileSync(new URL("../../firestore.test.rules", import.meta.url), "utf8");
+  const rules = fs.readFileSync(new URL(`../../${ruleFile}`, import.meta.url), "utf8");
   const testEnv = await initializeTestEnvironment({
     projectId: PROJECT_ID,
     firestore: {

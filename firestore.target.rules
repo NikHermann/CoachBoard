@@ -1,0 +1,91 @@
+rules_version = '2';
+
+// Variante B: restriktiver Zielzustand.
+// Rollen stammen ausschließlich aus serverseitig gesetzten Custom Claims.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function hasRole(role) {
+      return signedIn() && request.auth.token.role == role;
+    }
+
+    function isAdmin() {
+      return hasRole("admin");
+    }
+
+    function isTrainer() {
+      return hasRole("trainer");
+    }
+
+    function hasNoStoredPassword(data) {
+      return !("password" in data);
+    }
+
+    function ownsProfile(userId) {
+      return signedIn()
+        && "uid" in resource.data
+        && request.auth.uid == resource.data.uid;
+    }
+
+    function validNewProfile(userId) {
+      return signedIn()
+        && request.auth.uid == userId
+        && request.resource.data.uid == request.auth.uid
+        && hasNoStoredPassword(request.resource.data)
+        && request.resource.data.keys().hasOnly([
+          "uid", "email", "username", "club", "role"
+        ])
+        && request.resource.data.role == "spieler";
+    }
+
+    function validOwnProfileUpdate(userId) {
+      return ownsProfile(userId)
+        && hasNoStoredPassword(resource.data)
+        && hasNoStoredPassword(request.resource.data)
+        && request.resource.data.uid == resource.data.uid
+        && request.resource.data.role == resource.data.role
+        && request.resource.data.email == resource.data.email
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          "username", "club"
+        ]);
+    }
+
+    match /users/{userId} {
+      // Legacy-Dokumente mit Passwortfeld bleiben auch für Besitzer und Admins gesperrt.
+      allow get: if hasNoStoredPassword(resource.data)
+        && (ownsProfile(userId) || isAdmin());
+      // Collection-Queries können Felder nicht redigieren. Bis alle Legacy-
+      // Passwortfelder entfernt sind, erfolgt Admin-Auflistung nur serverseitig.
+      allow list: if false;
+
+      // Admin-Provisionierung und Rollenänderungen erfolgen nicht als direkter Client-Write.
+      allow create: if validNewProfile(userId);
+      allow update: if validOwnProfileUpdate(userId);
+      allow delete: if false;
+    }
+
+    match /trainings/{trainingId} {
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && request.resource.data.created_by_auth_uid == request.auth.uid;
+      allow update: if isAdmin()
+        || (signedIn()
+          && resource.data.created_by_auth_uid == request.auth.uid
+          && request.resource.data.created_by_auth_uid == resource.data.created_by_auth_uid);
+      allow delete: if isAdmin()
+        || (signedIn() && resource.data.created_by_auth_uid == request.auth.uid);
+    }
+
+    match /exercises/{exerciseId} {
+      allow read: if signedIn();
+      allow write: if isAdmin() || isTrainer();
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

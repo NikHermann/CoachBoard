@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "test": "npm run test:firebase:emulators",
     "test:firebase": "node --test --test-concurrency=1 tests/firebase/*.test.js",
-    "test:firebase:emulators": "node tests/firebase/runEmulators.cjs"
+    "test:firebase:emulators": "node tests/firebase/runEmulators.cjs",
+    "test:firebase:rule-variants": "node tests/firebase/runRuleVariants.cjs"
   },
   "repository": {
     "type": "git",
