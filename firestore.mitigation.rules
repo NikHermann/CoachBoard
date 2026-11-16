@@ -1,0 +1,26 @@
+rules_version = '2';
+
+// Variante A: befristete Schadensbegrenzung.
+// Trainings und Übungen bleiben absichtlich öffentlich lesbar.
+// Dieses Regelwerk ist deshalb kein vollständig sicherer Zielzustand.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /users/{userId} {
+      allow read, write: if false;
+    }
+
+    match /trainings/{trainingId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    match /exercises/{exerciseId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

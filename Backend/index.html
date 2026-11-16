@@ -16,13 +16,13 @@
 
     <div class="auth-tabs">
       <button class="auth-tab is-active" type="button" data-auth-tab="login">Anmelden</button>
-      <button class="auth-tab" type="button" data-auth-tab="register">Konto erstellen</button>
+      <button id="register-tab" class="auth-tab" type="button" data-auth-tab="register">Konto erstellen</button>
     </div>
 
     <div id="auth-login-panel">
       <form id="login-form" class="auth-form">
         <label class="field">
-          <span class="field__label">Benutzername</span>
+          <span id="login-identifier-label" class="field__label">Benutzername</span>
           <input
                   id="login-username"
                   class="field__control"
@@ -44,12 +44,16 @@
           />
         </label>
 
-        <p class="auth-note">
+        <p id="login-auth-note" class="auth-note">
           Bitte mit Benutzername und Passwort anmelden.
         </p>
 
         <button class="btn btn--primary btn--full btn--large" type="submit">
           Anmelden
+        </button>
+
+        <button id="password-reset-btn" class="btn btn--secondary btn--full is-hidden" type="button">
+          Passwort vergessen?
         </button>
       </form>
     </div>
