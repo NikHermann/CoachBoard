@@ -68,7 +68,9 @@ service cloud.firestore {
       allow list: if false;
 
       // Admin-Provisionierung und Rollenänderungen erfolgen nicht als direkter Client-Write.
-      allow create: if validNewProfile(userId);
+      // Alle aktiven Konten und Profile bestehen bereits. Neue Profile werden
+      // ausschließlich über einen gesondert freigegebenen Serverprozess angelegt.
+      allow create: if false;
       allow update: if validOwnProfileUpdate(userId);
       allow delete: if false;
     }

@@ -8,6 +8,9 @@ import {
 import { createSecureAuthAdapter } from "./secureAuthAdapter.js";
 import { changeOwnPassword, sendResetMailToEmail } from "./authService.js";
 import { isLocalAuthTestMode } from "./localAuthTestMode.js";
+import { isProductionAuthMode } from "./productionAuthMode.js";
+
+const isSecureAuthMode = isLocalAuthTestMode || isProductionAuthMode;
 
 const STORAGE_KEY = "coachboardCurrentUserId";
 let initialDataLoadPromise = null;
@@ -70,12 +73,13 @@ function getRoutePathFromState() {
 
 function updateBrowserUrl(replace = false) {
   const nextPath = getRoutePathFromState();
+  const nextUrl = isLocalAuthTestMode ? `${nextPath}${window.location.search}${window.location.hash}` : nextPath;
 
   if (window.location.pathname === nextPath) {
     return;
   }
 
-  window.history[replace ? "replaceState" : "pushState"]({}, "", nextPath);
+  window.history[replace ? "replaceState" : "pushState"]({}, "", nextUrl);
 }
 
 function applyBrowserRoute() {
@@ -108,7 +112,7 @@ function applyBrowserRoute() {
   }
 
   if (path === "/benutzer") {
-    if (!isLocalAuthTestMode && state.currentUser && normalizeRole(state.currentUser.role) === "admin") {
+    if (!isSecureAuthMode && state.currentUser && normalizeRole(state.currentUser.role) === "admin") {
       state.activeView = "user-management";
     } else {
       state.activeView = "library";
@@ -562,7 +566,7 @@ function setCurrentUser(user) {
   // Alte dauerhafte Anmeldung entfernen, damit der Login nur pro Browser-Sitzung gilt.
   localStorage.removeItem(STORAGE_KEY);
 
-  if (state.currentUser && !isLocalAuthTestMode) {
+  if (state.currentUser && !isSecureAuthMode) {
     sessionStorage.setItem(STORAGE_KEY, state.currentUser.id);
     showApp();
   } else if (state.currentUser) {
@@ -640,9 +644,9 @@ function updateCurrentUserUI() {
   repeatPasswordInput.value = "";
 
   const isAdmin = normalizeRole(user.role) === "admin";
-  adminUserSection?.classList.toggle("is-hidden", !isAdmin || isLocalAuthTestMode);
-  devRoleSection?.classList.toggle("is-hidden", !isAdmin || isLocalAuthTestMode);
-  userManagementNav?.classList.toggle("is-hidden", !isAdmin || isLocalAuthTestMode);
+  adminUserSection?.classList.toggle("is-hidden", !isAdmin || isSecureAuthMode);
+  devRoleSection?.classList.toggle("is-hidden", !isAdmin || isSecureAuthMode);
+  userManagementNav?.classList.toggle("is-hidden", !isAdmin || isSecureAuthMode);
   templateOptionField?.classList.toggle("is-hidden", !isAdmin);
 
   if (!isAdmin && trainingCreateForm.elements.is_template) {
@@ -2547,7 +2551,7 @@ async function loadSecureTrainingData(options = {}) {
 }
 
 async function reloadApplicationData(options = {}) {
-  return isLocalAuthTestMode ? loadSecureTrainingData(options) : loadAll(options);
+  return isSecureAuthMode ? loadSecureTrainingData(options) : loadAll(options);
 }
 
 async function handleSecureAuthState(authState) {
@@ -2582,7 +2586,7 @@ async function handleSecureAuthState(authState) {
   await loadSecureTrainingData({ applyRoute: true });
 }
 
-function activateLocalSecureAuthMode() {
+function activateSecureAuthMode() {
   registerTab?.classList.add("is-hidden");
   authRegisterPanel?.classList.add("is-hidden");
   passwordResetBtn?.classList.remove("is-hidden");
@@ -2590,7 +2594,9 @@ function activateLocalSecureAuthMode() {
   loginUsername.type = "email";
   loginUsername.placeholder = "E-Mail-Adresse eingeben";
   loginUsername.autocomplete = "email";
-  loginAuthNote.textContent = "Lokaler sicherer Testmodus: Anmeldung ausschließlich über Firebase Authentication.";
+  loginAuthNote.textContent = isLocalAuthTestMode
+    ? "Lokaler sicherer Testmodus: Anmeldung ausschließlich über Firebase Authentication."
+    : "Sichere Anmeldung mit E-Mail-Adresse und Firebase Authentication.";
 
   secureAuthFlow = createSecureAuthAdapter((authState) => {
     void handleSecureAuthState(authState);
@@ -2718,7 +2724,7 @@ function bindEvents() {
     const enteredPassword = String(loginPassword.value || "");
 
     if (!enteredUsername) {
-      alert(isLocalAuthTestMode ? "Bitte E-Mail-Adresse eingeben." : "Bitte Benutzernamen eingeben.");
+      alert(isSecureAuthMode ? "Bitte E-Mail-Adresse eingeben." : "Bitte Benutzernamen eingeben.");
       return;
     }
 
@@ -2729,7 +2735,7 @@ function bindEvents() {
     loginInProgress = true;
 
     try {
-      if (isLocalAuthTestMode) {
+      if (isSecureAuthMode) {
         await secureAuthFlow.loginWithEmail(enteredUsername, enteredPassword);
         loginPassword.value = "";
         return;
@@ -2765,7 +2771,7 @@ function bindEvents() {
       loginPassword.value = "";
       setCurrentUser(matchedUser);
     } catch (error) {
-      if (isLocalAuthTestMode) {
+      if (isSecureAuthMode) {
         console.warn("Firebase-Auth-Anmeldung wurde abgewiesen.");
         alert("Anmeldung fehlgeschlagen. Bitte E-Mail-Adresse und Passwort prüfen.");
       } else {
@@ -2777,7 +2783,7 @@ function bindEvents() {
   });
 
   passwordResetBtn?.addEventListener("click", async () => {
-    if (!isLocalAuthTestMode || passwordResetInProgress) return;
+    if (!isSecureAuthMode || passwordResetInProgress) return;
 
     const email = String(loginUsername.value || "").trim().toLowerCase();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -2802,8 +2808,8 @@ function bindEvents() {
   registerForm.addEventListener("submit", async (event) => {
     event.preventDefault();
 
-    if (isLocalAuthTestMode) {
-      alert("Die Registrierung ist im sicheren lokalen Testmodus deaktiviert.");
+    if (isSecureAuthMode) {
+      alert("Die Registrierung ist im sicheren Firebase-Auth-Modus deaktiviert.");
       return;
     }
 
@@ -2864,7 +2870,7 @@ function bindEvents() {
     const result = await updateUserProfile(state.currentUser.id, { username: newUsername });
     if (!result) return;
 
-    if (isLocalAuthTestMode) {
+    if (isSecureAuthMode) {
       state.currentUser = normalizeUser({ ...state.currentUser, username: newUsername });
       state.users = [state.currentUser];
     }
@@ -2902,7 +2908,7 @@ function bindEvents() {
       return;
     }
 
-    if (isLocalAuthTestMode) {
+    if (isSecureAuthMode) {
       try {
         await changeOwnPassword(currentPassword, newPassword);
       } catch {
@@ -2931,6 +2937,11 @@ function bindEvents() {
   devRoleForm.addEventListener("submit", async (event) => {
     event.preventDefault();
 
+    if (isSecureAuthMode) {
+      alert("Rollen werden ausschließlich serverseitig verwaltet.");
+      return;
+    }
+
     if (!state.currentUser) {
       alert("Kein Benutzer angemeldet.");
       return;
@@ -2952,6 +2963,11 @@ function bindEvents() {
   if (adminCreateUserForm) {
     adminCreateUserForm.addEventListener("submit", async (event) => {
       event.preventDefault();
+
+      if (isSecureAuthMode) {
+        alert("Benutzerkonten werden ausschließlich serverseitig verwaltet.");
+        return;
+      }
 
       if (!state.currentUser || normalizeRole(state.currentUser.role) !== "admin") {
         alert("Nur Admins dürfen höhere Rollen vergeben.");
@@ -2997,6 +3013,11 @@ function bindEvents() {
     userManagementCreateForm.addEventListener("submit", async (event) => {
       event.preventDefault();
 
+      if (isSecureAuthMode) {
+        alert("Benutzerkonten werden ausschließlich serverseitig verwaltet.");
+        return;
+      }
+
       if (!state.currentUser || normalizeRole(state.currentUser.role) !== "admin") {
         alert("Nur Admins dürfen Benutzer anlegen.");
         return;
@@ -3041,6 +3062,11 @@ function bindEvents() {
 
   if (userManagementTableWrap) {
     userManagementTableWrap.addEventListener("click", async (event) => {
+      if (isSecureAuthMode) {
+        alert("Benutzerkonten und Rollen werden ausschließlich serverseitig verwaltet.");
+        return;
+      }
+
       const saveButton = event.target.closest(".user-save-btn");
       const deleteButton = event.target.closest(".user-delete-btn");
 
@@ -3454,7 +3480,7 @@ function bindEvents() {
       sketch_preview_url: trainingSketchPreviewUrl,
       created_by_user_id: existingTraining?.created_by_user_id || state.currentUser.id,
       created_by_username: existingTraining?.created_by_username || state.currentUser.username,
-      created_by_auth_uid: isLocalAuthTestMode
+      created_by_auth_uid: isSecureAuthMode
         ? existingTraining?.created_by_auth_uid
           || (editingId ? "" : state.currentUser.authUid || state.currentUser.uid || "")
         : existingTraining?.created_by_auth_uid || "",
@@ -3487,7 +3513,7 @@ function bindEvents() {
   logoutBtn.addEventListener("click", async () => {
     closeMobileMenu();
     resetTrainingCreateForm();
-    if (isLocalAuthTestMode) {
+    if (isSecureAuthMode) {
       await secureAuthFlow.logout();
       clearAuthenticatedData();
     } else {
@@ -3524,8 +3550,8 @@ window.addEventListener("popstate", () => {
 
 bindEvents();
 setAuthTab("login");
-if (isLocalAuthTestMode) {
-  activateLocalSecureAuthMode();
+if (isSecureAuthMode) {
+  activateSecureAuthMode();
 } else {
   initialDataLoadPromise = loadAll({ applyRoute: true });
 }

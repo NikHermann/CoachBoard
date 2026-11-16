@@ -102,10 +102,10 @@ test("Eigenes Profil erlaubt nur Benutzername und Verein", async () => {
   await assertFails(updateDoc(doc(db, "users", seeded.modernUid), { password: "synthetic-denied-value" }));
 });
 
-test("Neues eigenes Profil ist passwortfrei und auf Spielerrolle begrenzt", async () => {
+test("Neue Profile sind auch für authentifizierte Benutzer gesperrt", async () => {
   const uid = "synthetic-new-player";
   const db = harness.testEnv.authenticatedContext(uid, { role: "spieler" }).firestore();
-  await assertSucceeds(setDoc(doc(db, "users", uid), {
+  await assertFails(setDoc(doc(db, "users", uid), {
     uid,
     email: "new.player@example.invalid",
     username: "synthetic-new-player",
