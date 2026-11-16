@@ -49,6 +49,22 @@ export function getSafeAuthDiagnostic(error, fallbackPhase = "internal") {
   return Object.freeze({ phase, code });
 }
 
+export function getSafeProfileDiagnostic(error) {
+  const diagnostic = error?.diagnostic;
+  if (!diagnostic || typeof diagnostic !== "object") return null;
+
+  const source = ["claim", "claim-cache", "uid"].includes(diagnostic.source)
+    ? diagnostic.source
+    : "unknown";
+  return Object.freeze({
+    claimPresent: diagnostic.claimPresent === true,
+    source,
+    exists: diagnostic.exists === true,
+    project: diagnostic.project === "coachboarddb" ? "coachboarddb" : "unexpected",
+    database: diagnostic.database === "(default)" ? "(default)" : "unexpected"
+  });
+}
+
 const INVALID_SESSION_CODES = new Set([
   "auth/id-token-expired",
   "auth/invalid-user-token",

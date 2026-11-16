@@ -12,6 +12,7 @@ import {
   createSecureAuthFlow,
   getLoginErrorMessage,
   getSafeAuthDiagnostic,
+  getSafeProfileDiagnostic,
   SecureAuthError
 } from "../../Backend/secureAuthFlow.js";
 import { installLocalNetworkGuard } from "./emulatorSafety.js";
@@ -176,6 +177,34 @@ test("Sichere Auth-Diagnose enthält nur Phase und Fehlercode", () => {
     getSafeAuthDiagnostic({ phase: "sign-in\nsecret", code: "invalid code with spaces" }, "sign-in"),
     { phase: "sign-in", code: "internal/unknown" }
   );
+});
+
+test("Sichtbare Profildiagnose beschränkt sich auf freigegebene Kategorien", () => {
+  assert.deepEqual(getSafeProfileDiagnostic({
+    diagnostic: {
+      claimPresent: true,
+      source: "claim",
+      exists: false,
+      project: "coachboarddb",
+      database: "(default)",
+      profileId: "must-not-be-exposed"
+    }
+  }), {
+    claimPresent: true,
+    source: "claim",
+    exists: false,
+    project: "coachboarddb",
+    database: "(default)"
+  });
+  assert.deepEqual(getSafeProfileDiagnostic({
+    diagnostic: { source: "attacker-value", project: "other", database: "other" }
+  }), {
+    claimPresent: false,
+    source: "unknown",
+    exists: false,
+    project: "unexpected",
+    database: "unexpected"
+  });
 });
 
 test("Browser-Neuladen wird durch einen neuen Observer auf derselben Auth-Sitzung wiederhergestellt", async () => {

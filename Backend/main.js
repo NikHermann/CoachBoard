@@ -9,6 +9,7 @@ import { createSecureAuthAdapter } from "./secureAuthAdapter.js";
 import {
   getLoginErrorMessage,
   getSafeAuthDiagnostic,
+  getSafeProfileDiagnostic,
   getSessionErrorMessage
 } from "./secureAuthFlow.js";
 import { changeOwnPassword, sendResetMailToEmail } from "./authService.js";
@@ -2615,11 +2616,17 @@ async function handleSecureAuthState(authState) {
         authState.error?.code?.startsWith("profile-") ? "profile-load" : "token-refresh"
     );
     console.warn("CoachBoard Auth-Diagnose:", diagnostic);
-    if (authState.error?.diagnostic) {
-      console.info("CoachBoard Profil-Diagnose:", authState.error.diagnostic);
+    const profileDiagnostic = getSafeProfileDiagnostic(authState.error);
+    if (profileDiagnostic) {
+      console.info("CoachBoard Profil-Diagnose:", profileDiagnostic);
     }
+    const profileDiagnosticText = profileDiagnostic
+      ? `\nProfil: claimPresent=${profileDiagnostic.claimPresent}, source=${profileDiagnostic.source}, `
+        + `exists=${profileDiagnostic.exists}, project=${profileDiagnostic.project}, `
+        + `database=${profileDiagnostic.database}`
+      : "";
     alert(`${authState.error?.message || "Die sichere Anmeldung ist fehlgeschlagen."}\n`
-      + `Diagnose: ${diagnostic.phase}: ${diagnostic.code}`);
+      + `Diagnose: ${diagnostic.phase}: ${diagnostic.code}${profileDiagnosticText}`);
     return;
   }
 
