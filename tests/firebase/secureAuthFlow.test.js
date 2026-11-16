@@ -234,6 +234,41 @@ test("Token-Refresh-Callback derselben UID überschreibt den profile_id-Abruf ni
   flow.dispose();
 });
 
+test("Späterer Callback ohne Claim ersetzt eine verifizierte Profilzuordnung nicht durch UID-Fallback", async () => {
+  const user = { uid: "sticky-auth-uid" };
+  const profileId = "sticky-profile-document";
+  const states = [];
+  const lookups = [];
+  let observer;
+  let tokenRead = 0;
+  const flow = createSecureAuthFlow({
+    loginWithEmailPassword: async () => ({ user }),
+    observeAuthState: (callback) => {
+      observer = callback;
+      return () => { observer = null; };
+    },
+    logoutFromAuth: async () => {},
+    readTokenClaims: async () => (++tokenRead === 1 ? { profile_id: profileId } : {}),
+    readProfile: async (requestedId, currentUser, claims, lookup) => {
+      lookups.push({ requestedId, ...lookup });
+      return { uid: currentUser.uid };
+    },
+    onStateChange: (state) => states.push(state)
+  });
+
+  flow.start();
+  observer(user);
+  await waitForState(states, (state) => state.status === "authenticated");
+  observer(user);
+  await waitForState(states, (_, index) => index > 2 && states.at(-1)?.status === "authenticated");
+
+  assert.equal(lookups[0].requestedId, profileId);
+  assert.equal(lookups[0].source, "claim");
+  assert.equal(lookups[1].requestedId, profileId);
+  assert.equal(lookups[1].source, "claim-cache");
+  flow.dispose();
+});
+
 test("Sicherer Logout beendet die Firebase-Auth-Sitzung", async () => {
   const states = [];
   const flow = createEmulatorFlow(states);

@@ -31,7 +31,7 @@ test("Profilabruf verwendet die aus dem Claim abgeleitete Firestore-Dokument-ID"
       exists: () => true,
       data: () => ({ uid: "synthetic-auth-uid", username: "Synthetic Admin" })
     })
-  });
+  }, null, { claimPresent: true, source: "claim" });
 
   assert.deepEqual(requestedPaths, [["synthetic-db", "users", "different-profile-document"]]);
   assert.equal(profile.uid, "synthetic-auth-uid");

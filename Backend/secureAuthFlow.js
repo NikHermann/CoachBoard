@@ -7,6 +7,7 @@ export class SecureAuthError extends Error {
     this.name = "SecureAuthError";
     this.code = code;
     this.phase = options.phase || null;
+    this.diagnostic = options.diagnostic || null;
   }
 }
 
@@ -82,11 +83,13 @@ function getVerifiedRole(claims) {
   return ALLOWED_ROLES.has(claimedRole) ? claimedRole : "spieler";
 }
 
-function getProfileId(user, claims) {
+function getProfileResolution(user, claims, previousClaimProfileId = "") {
   const claimedProfileId = typeof claims?.profile_id === "string"
     ? claims.profile_id.trim()
     : "";
-  const profileId = claimedProfileId || String(user?.uid || "");
+  const cachedProfileId = String(previousClaimProfileId || "").trim();
+  const profileId = claimedProfileId || cachedProfileId || String(user?.uid || "");
+  const source = claimedProfileId ? "claim" : cachedProfileId ? "claim-cache" : "uid";
 
   if (!SAFE_PROFILE_ID.test(profileId)) {
     throw new SecureAuthError(
@@ -95,7 +98,11 @@ function getProfileId(user, claims) {
     );
   }
 
-  return profileId;
+  return Object.freeze({
+    profileId,
+    claimPresent: Boolean(claimedProfileId),
+    source
+  });
 }
 
 function sanitizeProfile(profile, user, profileId) {
@@ -157,6 +164,7 @@ export function createSecureAuthFlow(dependencies) {
   let observedUid = null;
   let authStateInFlight = null;
   let authStateInFlightUid = null;
+  const claimProfileIds = new Map();
   let state = Object.freeze({ status: "idle", user: null, profile: null, role: null, error: null });
 
   function publish(nextState) {
@@ -170,6 +178,7 @@ export function createSecureAuthFlow(dependencies) {
 
     if (!user) {
       observedUid = null;
+      claimProfileIds.clear();
       publish({ status: "signed-out", user: null, profile: null, role: null, error: null });
       return;
     }
@@ -178,9 +187,17 @@ export function createSecureAuthFlow(dependencies) {
 
     try {
       const claims = await readTokenClaims(user, forceRefresh);
-      const profileId = getProfileId(user, claims);
-      const rawProfile = await readProfile(profileId, user, claims);
-      const profile = sanitizeProfile(rawProfile, user, profileId);
+      const resolution = getProfileResolution(user, claims, claimProfileIds.get(user.uid));
+      if (resolution.claimPresent) {
+        claimProfileIds.set(user.uid, resolution.profileId);
+      }
+      const rawProfile = await readProfile(
+          resolution.profileId,
+          user,
+          claims,
+          { claimPresent: resolution.claimPresent, source: resolution.source }
+      );
+      const profile = sanitizeProfile(rawProfile, user, resolution.profileId);
 
       if (disposed || currentGeneration !== generation) return;
 
@@ -323,6 +340,7 @@ export function createSecureAuthFlow(dependencies) {
       unsubscribe = null;
       authStateInFlight = null;
       authStateInFlightUid = null;
+      claimProfileIds.clear();
     }
   });
 }

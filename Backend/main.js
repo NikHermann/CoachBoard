@@ -2615,6 +2615,9 @@ async function handleSecureAuthState(authState) {
         authState.error?.code?.startsWith("profile-") ? "profile-load" : "token-refresh"
     );
     console.warn("CoachBoard Auth-Diagnose:", diagnostic);
+    if (authState.error?.diagnostic) {
+      console.info("CoachBoard Profil-Diagnose:", authState.error.diagnostic);
+    }
     alert(`${authState.error?.message || "Die sichere Anmeldung ist fehlgeschlagen."}\n`
       + `Diagnose: ${diagnostic.phase}: ${diagnostic.code}`);
     return;

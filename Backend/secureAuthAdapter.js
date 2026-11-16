@@ -1,7 +1,7 @@
 // main.js aktiviert diesen Flow im lokalen Emulator- und freigegebenen Produktionsmodus.
 import { getIdTokenResult } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
-import { db } from "./firebase.js";
+import { db, firebaseConfig } from "./firebase.js";
 import { login, logout, observeAuth, validateCurrentSession } from "./authService.js";
 import { createSecureAuthFlow, SecureAuthError } from "./secureAuthFlow.js";
 
@@ -24,8 +24,20 @@ export async function readTokenClaims(
 
 export async function readProfile(
   profileId,
-  { database = db, getDocument = getDoc, document = doc } = {}
+  userOrDependencies,
+  claims,
+  lookup = {},
+  injectedDependencies = null
 ) {
+  const dependencies = injectedDependencies
+    || (userOrDependencies?.database || userOrDependencies?.getDocument || userOrDependencies?.document
+      ? userOrDependencies
+      : {});
+  const {
+    database = db,
+    getDocument = getDoc,
+    document = doc
+  } = dependencies;
   let snapshot;
 
   try {
@@ -46,11 +58,20 @@ export async function readProfile(
     );
   }
 
-  if (!snapshot.exists()) {
+  const diagnostic = Object.freeze({
+    claimPresent: Boolean(lookup.claimPresent ?? (typeof claims?.profile_id === "string" && claims.profile_id.trim())),
+    source: ["claim", "claim-cache", "uid"].includes(lookup.source) ? lookup.source : "uid",
+    exists: snapshot.exists(),
+    project: firebaseConfig.projectId,
+    database: "(default)"
+  });
+  console.info("CoachBoard Profil-Diagnose:", diagnostic);
+
+  if (!diagnostic.exists) {
     throw new SecureAuthError(
       "profile-missing",
       "Für dieses Konto ist kein Profil verfügbar.",
-      { phase: "profile-load" }
+      { phase: "profile-load", diagnostic }
     );
   }
 
