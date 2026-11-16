@@ -138,6 +138,8 @@ export function createSecureAuthFlow(dependencies) {
   let unsubscribe = null;
   let validationPromise = null;
   let observedUid = null;
+  let authStateInFlight = null;
+  let authStateInFlightUid = null;
   let state = Object.freeze({ status: "idle", user: null, profile: null, role: null, error: null });
 
   function publish(nextState) {
@@ -201,7 +203,22 @@ export function createSecureAuthFlow(dependencies) {
           const nextUid = String(user?.uid || "");
           const forceRefresh = Boolean(nextUid && nextUid !== observedUid);
           observedUid = nextUid || null;
-          void handleAuthState(user, forceRefresh);
+
+          // Ein erzwungener Token-Refresh löst onIdTokenChanged erneut aus.
+          // Derselbe Benutzer wird bereits mit dem frischen Token verarbeitet;
+          // ein konkurrierender Callback dürfte diesen Profilabruf sonst verwerfen.
+          if (authStateInFlight && nextUid === authStateInFlightUid) return;
+
+          authStateInFlightUid = nextUid;
+          authStateInFlight = {};
+          const current = handleAuthState(user, forceRefresh);
+          authStateInFlight = current;
+          void current.finally(() => {
+            if (authStateInFlight === current) {
+              authStateInFlight = null;
+              authStateInFlightUid = null;
+            }
+          });
         });
       }
 
@@ -276,6 +293,8 @@ export function createSecureAuthFlow(dependencies) {
       ++generation;
       unsubscribe?.();
       unsubscribe = null;
+      authStateInFlight = null;
+      authStateInFlightUid = null;
     }
   });
 }

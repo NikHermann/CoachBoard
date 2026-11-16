@@ -177,6 +177,46 @@ test("Browser-Neuladen wird durch einen neuen Observer auf derselben Auth-Sitzun
   reloadedFlow.dispose();
 });
 
+test("Token-Refresh-Callback derselben UID überschreibt den profile_id-Abruf nicht", async () => {
+  const user = { uid: "race-auth-uid", email: "race@example.invalid" };
+  const profileId = "race-profile-document";
+  const states = [];
+  const requestedProfileIds = [];
+  let observer;
+  let tokenReads = 0;
+
+  const flow = createSecureAuthFlow({
+    loginWithEmailPassword: async () => ({ user }),
+    observeAuthState: (callback) => {
+      observer = callback;
+      return () => { observer = null; };
+    },
+    logoutFromAuth: async () => {},
+    validateAuthSession: async () => true,
+    readTokenClaims: async (currentUser, forceRefresh) => {
+      tokenReads += 1;
+      assert.equal(currentUser.uid, user.uid);
+      assert.equal(forceRefresh, true);
+      observer?.(user);
+      await Promise.resolve();
+      return { role: "admin", profile_id: profileId };
+    },
+    readProfile: async (requestedProfileId) => {
+      requestedProfileIds.push(requestedProfileId);
+      return { uid: user.uid, email: user.email };
+    },
+    onStateChange: (state) => states.push(state)
+  });
+
+  flow.start();
+  observer(user);
+  const authenticated = await waitForState(states, (state) => state.status === "authenticated");
+  assert.equal(authenticated.profile.id, profileId);
+  assert.deepEqual(requestedProfileIds, [profileId]);
+  assert.equal(tokenReads, 1);
+  flow.dispose();
+});
+
 test("Sicherer Logout beendet die Firebase-Auth-Sitzung", async () => {
   const states = [];
   const flow = createEmulatorFlow(states);
