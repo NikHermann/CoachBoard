@@ -1,4 +1,4 @@
-// Isolierter Phase-2-Adapter. Diese Datei wird vom bestehenden main.js nicht importiert.
+// Im normalen Einstieg inaktiv; main.js aktiviert den Flow nur im lokalen Emulator-Testmodus.
 import { getIdTokenResult } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "./firebase.js";
@@ -20,7 +20,7 @@ async function readProfile(profileId) {
   return snapshot.data();
 }
 
-export function createInactiveSecureAuthFlow(onStateChange) {
+export function createSecureAuthAdapter(onStateChange) {
   return createSecureAuthFlow({
     loginWithEmailPassword: login,
     observeAuthState: observeAuth,
@@ -30,3 +30,6 @@ export function createInactiveSecureAuthFlow(onStateChange) {
     onStateChange
   });
 }
+
+// Rückwärtskompatibler Name für die bestehenden Phase-2-Tests und Dokumentation.
+export const createInactiveSecureAuthFlow = createSecureAuthAdapter;

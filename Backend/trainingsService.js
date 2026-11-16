@@ -107,6 +107,7 @@ function createTrainingPayload(trainingData, preserveCreatedAt = null) {
   const sketch_file_name = toSafeString(trainingData.sketch_file_name);
   const created_by_user_id = toSafeString(trainingData.created_by_user_id);
   const created_by_username = toSafeString(trainingData.created_by_username);
+  const created_by_auth_uid = toSafeString(trainingData.created_by_auth_uid);
 
   const warmup = normalizeWarmupEntry(trainingData.warmup);
   const exercises = Array.isArray(trainingData.exercises)
@@ -116,7 +117,7 @@ function createTrainingPayload(trainingData, preserveCreatedAt = null) {
   const fallbackDuration = calculateDurationFromExerciseEntries(exercises, warmup);
   const finalDuration = enteredDuration || fallbackDuration;
 
-  return {
+  const payload = {
     title,
     age_group,
     required_players,
@@ -134,6 +135,14 @@ function createTrainingPayload(trainingData, preserveCreatedAt = null) {
     created_at: preserveCreatedAt || new Date().toISOString(),
     updated_at: new Date().toISOString()
   };
+
+  // Historische Trainings bleiben unverändert. Nur moderne/neue Trainings tragen
+  // zusätzlich die unveränderbare Firebase-Auth-UID.
+  if (created_by_auth_uid) {
+    payload.created_by_auth_uid = created_by_auth_uid;
+  }
+
+  return payload;
 }
 
 export async function fetchTrainingEntries() {
@@ -167,7 +176,8 @@ export async function fetchTrainingEntries() {
       exercises,
       sketch_file_name: toSafeString(data.sketch_file_name),
       created_by_user_id: toSafeString(data.created_by_user_id),
-      created_by_username: toSafeString(data.created_by_username)
+      created_by_username: toSafeString(data.created_by_username),
+      created_by_auth_uid: toSafeString(data.created_by_auth_uid)
     };
   });
 }

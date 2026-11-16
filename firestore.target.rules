@@ -20,6 +20,12 @@ service cloud.firestore {
       return hasRole("trainer");
     }
 
+    function authProfileId() {
+      return signedIn()
+        ? request.auth.token.get("profile_id", request.auth.uid)
+        : "";
+    }
+
     function hasNoStoredPassword(data) {
       return !("password" in data);
     }
@@ -70,13 +76,24 @@ service cloud.firestore {
     match /trainings/{trainingId} {
       allow read: if signedIn();
       allow create: if signedIn()
-        && request.resource.data.created_by_auth_uid == request.auth.uid;
+        && request.resource.data.created_by_auth_uid == request.auth.uid
+        && request.resource.data.created_by_user_id == authProfileId();
       allow update: if isAdmin()
         || (signedIn()
           && resource.data.created_by_auth_uid == request.auth.uid
-          && request.resource.data.created_by_auth_uid == resource.data.created_by_auth_uid);
+          && request.resource.data.created_by_auth_uid == resource.data.created_by_auth_uid
+          && request.resource.data.created_by_user_id == resource.data.created_by_user_id)
+        || (signedIn()
+          && !("created_by_auth_uid" in resource.data)
+          && !("created_by_auth_uid" in request.resource.data)
+          && resource.data.created_by_user_id == authProfileId()
+          && request.resource.data.created_by_user_id == resource.data.created_by_user_id);
       allow delete: if isAdmin()
-        || (signedIn() && resource.data.created_by_auth_uid == request.auth.uid);
+        || (signedIn()
+          && resource.data.created_by_auth_uid == request.auth.uid)
+        || (signedIn()
+          && !("created_by_auth_uid" in resource.data)
+          && resource.data.created_by_user_id == authProfileId());
     }
 
     match /exercises/{exerciseId} {

@@ -5,10 +5,15 @@ import {
   sendExercisesToBackend,
   generateTrainingPlanWithAi
 } from "./aiBackendService.js";
+import { createSecureAuthAdapter } from "./secureAuthAdapter.js";
+import { changeOwnPassword, sendResetMailToEmail } from "./authService.js";
+import { isLocalAuthTestMode } from "./localAuthTestMode.js";
 
 const STORAGE_KEY = "coachboardCurrentUserId";
 let initialDataLoadPromise = null;
 let loginInProgress = false;
+let passwordResetInProgress = false;
+let secureAuthFlow = null;
 
 const state = {
   activeView: "library",
@@ -103,7 +108,7 @@ function applyBrowserRoute() {
   }
 
   if (path === "/benutzer") {
-    if (state.currentUser && normalizeRole(state.currentUser.role) === "admin") {
+    if (!isLocalAuthTestMode && state.currentUser && normalizeRole(state.currentUser.role) === "admin") {
       state.activeView = "user-management";
     } else {
       state.activeView = "library";
@@ -201,6 +206,10 @@ const loginForm = document.getElementById("login-form");
 const registerForm = document.getElementById("register-form");
 const loginUsername = document.getElementById("login-username");
 const loginPassword = document.getElementById("login-password");
+const loginIdentifierLabel = document.getElementById("login-identifier-label");
+const loginAuthNote = document.getElementById("login-auth-note");
+const registerTab = document.getElementById("register-tab");
+const passwordResetBtn = document.getElementById("password-reset-btn");
 
 const pageTitle = document.getElementById("page-title");
 
@@ -461,6 +470,7 @@ function normalizeTraining(training) {
     sketch_preview_url: training.sketch_preview_url || "",
     created_by_user_id: training.created_by_user_id || "",
     created_by_username: training.created_by_username || "",
+    created_by_auth_uid: training.created_by_auth_uid || "",
     dateLabel: formatDate(effectiveDate),
     dateValue: toDateInputValue(effectiveDate)
   };
@@ -552,8 +562,11 @@ function setCurrentUser(user) {
   // Alte dauerhafte Anmeldung entfernen, damit der Login nur pro Browser-Sitzung gilt.
   localStorage.removeItem(STORAGE_KEY);
 
-  if (state.currentUser) {
+  if (state.currentUser && !isLocalAuthTestMode) {
     sessionStorage.setItem(STORAGE_KEY, state.currentUser.id);
+    showApp();
+  } else if (state.currentUser) {
+    sessionStorage.removeItem(STORAGE_KEY);
     showApp();
   } else {
     sessionStorage.removeItem(STORAGE_KEY);
@@ -627,9 +640,9 @@ function updateCurrentUserUI() {
   repeatPasswordInput.value = "";
 
   const isAdmin = normalizeRole(user.role) === "admin";
-  adminUserSection?.classList.toggle("is-hidden", !isAdmin);
-  devRoleSection?.classList.toggle("is-hidden", !isAdmin);
-  userManagementNav?.classList.toggle("is-hidden", !isAdmin);
+  adminUserSection?.classList.toggle("is-hidden", !isAdmin || isLocalAuthTestMode);
+  devRoleSection?.classList.toggle("is-hidden", !isAdmin || isLocalAuthTestMode);
+  userManagementNav?.classList.toggle("is-hidden", !isAdmin || isLocalAuthTestMode);
   templateOptionField?.classList.toggle("is-hidden", !isAdmin);
 
   if (!isAdmin && trainingCreateForm.elements.is_template) {
@@ -2493,6 +2506,98 @@ async function loadAll(options = {}) {
   }
 }
 
+function clearAuthenticatedData() {
+  state.trainings = [];
+  state.users = [];
+  state.exerciseEntries = [];
+  state.filteredTrainings = [];
+  state.filteredExerciseEntries = [];
+  state.selectedTrainingId = null;
+  state.selectedExerciseEntryId = null;
+  state.editingTrainingId = null;
+  state.currentPage = 1;
+  resetTrainingCreateForm();
+  setCurrentUser(null);
+}
+
+async function loadSecureTrainingData(options = {}) {
+  if (!state.currentUser) return false;
+
+  try {
+    const trainingEntries = await fetchTrainingEntries();
+    state.trainings = trainingEntries.map(normalizeTraining);
+    state.exerciseEntries = buildExerciseEntries();
+    populateAgeFilter();
+    populatePlayersFilter();
+    populateExerciseAgeFilter();
+    populateExercisePlayersFilter();
+    populateTrainingAgeGroupSelect();
+
+    if (options.applyRoute) {
+      applyBrowserRoute();
+    }
+
+    render();
+    return true;
+  } catch (error) {
+    console.error("Geschützte Trainingsdaten konnten nicht geladen werden:", error);
+    alert("Die Trainingsdaten konnten nicht geladen werden.");
+    return false;
+  }
+}
+
+async function reloadApplicationData(options = {}) {
+  return isLocalAuthTestMode ? loadSecureTrainingData(options) : loadAll(options);
+}
+
+async function handleSecureAuthState(authState) {
+  if (authState.status === "signed-out") {
+    clearAuthenticatedData();
+    return;
+  }
+
+  if (authState.status === "loading-profile") {
+    showAuth();
+    return;
+  }
+
+  if (authState.status === "error") {
+    clearAuthenticatedData();
+    alert(authState.error?.message || "Die sichere Anmeldung ist fehlgeschlagen.");
+    return;
+  }
+
+  if (authState.status !== "authenticated") return;
+
+  const currentUser = normalizeUser({
+    ...authState.profile,
+    id: authState.profile.id,
+    uid: authState.user.uid,
+    authUid: authState.user.uid,
+    role: authState.role
+  });
+
+  state.users = [currentUser];
+  setCurrentUser(currentUser);
+  await loadSecureTrainingData({ applyRoute: true });
+}
+
+function activateLocalSecureAuthMode() {
+  registerTab?.classList.add("is-hidden");
+  authRegisterPanel?.classList.add("is-hidden");
+  passwordResetBtn?.classList.remove("is-hidden");
+  loginIdentifierLabel.textContent = "E-Mail-Adresse";
+  loginUsername.type = "email";
+  loginUsername.placeholder = "E-Mail-Adresse eingeben";
+  loginUsername.autocomplete = "email";
+  loginAuthNote.textContent = "Lokaler sicherer Testmodus: Anmeldung ausschließlich über Firebase Authentication.";
+
+  secureAuthFlow = createSecureAuthAdapter((authState) => {
+    void handleSecureAuthState(authState);
+  });
+  secureAuthFlow.start();
+}
+
 function findNewestMatchingUser(username, club, role) {
   const targetRole = normalizeRole(role);
 
@@ -2613,7 +2718,7 @@ function bindEvents() {
     const enteredPassword = String(loginPassword.value || "");
 
     if (!enteredUsername) {
-      alert("Bitte Benutzernamen eingeben.");
+      alert(isLocalAuthTestMode ? "Bitte E-Mail-Adresse eingeben." : "Bitte Benutzernamen eingeben.");
       return;
     }
 
@@ -2624,6 +2729,12 @@ function bindEvents() {
     loginInProgress = true;
 
     try {
+      if (isLocalAuthTestMode) {
+        await secureAuthFlow.loginWithEmail(enteredUsername, enteredPassword);
+        loginPassword.value = "";
+        return;
+      }
+
       let dataLoaded = initialDataLoadPromise ? await initialDataLoadPromise : false;
 
       if (!dataLoaded) {
@@ -2653,13 +2764,48 @@ function bindEvents() {
       loginUsername.value = "";
       loginPassword.value = "";
       setCurrentUser(matchedUser);
+    } catch (error) {
+      if (isLocalAuthTestMode) {
+        console.warn("Firebase-Auth-Anmeldung wurde abgewiesen.");
+        alert("Anmeldung fehlgeschlagen. Bitte E-Mail-Adresse und Passwort prüfen.");
+      } else {
+        throw error;
+      }
     } finally {
       loginInProgress = false;
     }
   });
 
+  passwordResetBtn?.addEventListener("click", async () => {
+    if (!isLocalAuthTestMode || passwordResetInProgress) return;
+
+    const email = String(loginUsername.value || "").trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      alert("Bitte zuerst eine gültige E-Mail-Adresse eingeben.");
+      return;
+    }
+
+    passwordResetInProgress = true;
+    passwordResetBtn.disabled = true;
+
+    try {
+      await sendResetMailToEmail(email);
+    } catch {
+      // Absichtlich identische Rückmeldung, damit kein Kontobestand offengelegt wird.
+    } finally {
+      passwordResetInProgress = false;
+      passwordResetBtn.disabled = false;
+      alert("Falls für diese E-Mail-Adresse ein Konto existiert, wurde eine Reset-E-Mail angefordert.");
+    }
+  });
+
   registerForm.addEventListener("submit", async (event) => {
     event.preventDefault();
+
+    if (isLocalAuthTestMode) {
+      alert("Die Registrierung ist im sicheren lokalen Testmodus deaktiviert.");
+      return;
+    }
 
     const formData = new FormData(registerForm);
     const username = String(formData.get("username") || "").trim();
@@ -2684,7 +2830,7 @@ function bindEvents() {
     }
 
     await createUser(null, { username, club, role: "trainer", password });
-    await loadAll();
+    await reloadApplicationData();
 
     const createdUser = findNewestMatchingUser(username, club, "trainer");
 
@@ -2718,7 +2864,11 @@ function bindEvents() {
     const result = await updateUserProfile(state.currentUser.id, { username: newUsername });
     if (!result) return;
 
-    await loadAll();
+    if (isLocalAuthTestMode) {
+      state.currentUser = normalizeUser({ ...state.currentUser, username: newUsername });
+      state.users = [state.currentUser];
+    }
+    await reloadApplicationData();
     state.activeView = "profile";
     render();
     alert("Benutzername erfolgreich aktualisiert.");
@@ -2752,18 +2902,27 @@ function bindEvents() {
       return;
     }
 
-    if (state.currentUser.password && state.currentUser.password !== currentPassword) {
-      alert("Das aktuelle Passwort ist nicht korrekt.");
-      return;
+    if (isLocalAuthTestMode) {
+      try {
+        await changeOwnPassword(currentPassword, newPassword);
+      } catch {
+        alert("Das Passwort konnte nicht geändert werden. Bitte aktuelles Passwort prüfen.");
+        return;
+      }
+    } else {
+      if (state.currentUser.password && state.currentUser.password !== currentPassword) {
+        alert("Das aktuelle Passwort ist nicht korrekt.");
+        return;
+      }
+
+      const result = await updateUserProfile(state.currentUser.id, {
+        password: newPassword
+      });
+
+      if (!result) return;
+      await reloadApplicationData();
     }
 
-    const result = await updateUserProfile(state.currentUser.id, {
-      password: newPassword
-    });
-
-    if (!result) return;
-
-    await loadAll();
     state.activeView = "profile";
     render();
     alert("Passwort erfolgreich aktualisiert.");
@@ -2784,7 +2943,7 @@ function bindEvents() {
 
     if (!result) return;
 
-    await loadAll();
+    await reloadApplicationData();
     state.activeView = "profile";
     render();
     alert(`Rolle wurde auf ${getRoleLabel(selectedRole)} gesetzt.`);
@@ -2828,7 +2987,7 @@ function bindEvents() {
       adminCreateUserForm.querySelector('[name="club"]').value = "TSV Ottensheim";
       adminCreateUserForm.querySelector('[name="role"]').value = "spieler";
 
-      await loadAll();
+      await reloadApplicationData();
       state.activeView = "profile";
       render();
     });
@@ -2872,7 +3031,7 @@ function bindEvents() {
       userManagementCreateForm.querySelector('[name="club"]').value = "TSV Ottensheim";
       userManagementCreateForm.querySelector('[name="role"]').value = "spieler";
 
-      await loadAll();
+      await reloadApplicationData();
       state.activeView = "user-management";
       render();
 
@@ -2914,7 +3073,7 @@ function bindEvents() {
 
         if (!result) return;
 
-        await loadAll();
+        await reloadApplicationData();
         state.activeView = "user-management";
         render();
 
@@ -2955,7 +3114,7 @@ function bindEvents() {
 
         if (!result) return;
 
-        await loadAll();
+        await reloadApplicationData();
 
         if (state.currentUser && normalizeRole(state.currentUser.role) === "admin") {
           state.activeView = "user-management";
@@ -3057,7 +3216,7 @@ function bindEvents() {
     state.activeView = state.detailSourceView || "library";
     state.currentPage = 1;
 
-    await loadAll();
+    await reloadApplicationData();
   });
 
   detailPrintBtn.addEventListener("click", () => {
@@ -3295,6 +3454,10 @@ function bindEvents() {
       sketch_preview_url: trainingSketchPreviewUrl,
       created_by_user_id: existingTraining?.created_by_user_id || state.currentUser.id,
       created_by_username: existingTraining?.created_by_username || state.currentUser.username,
+      created_by_auth_uid: isLocalAuthTestMode
+        ? existingTraining?.created_by_auth_uid
+          || (editingId ? "" : state.currentUser.authUid || state.currentUser.uid || "")
+        : existingTraining?.created_by_auth_uid || "",
       created_at: existingTraining?.created_at || null
     };
 
@@ -3318,13 +3481,18 @@ function bindEvents() {
     }
 
     resetTrainingCreateForm();
-    await loadAll();
+    await reloadApplicationData();
   });
 
-  logoutBtn.addEventListener("click", () => {
+  logoutBtn.addEventListener("click", async () => {
     closeMobileMenu();
     resetTrainingCreateForm();
-    setCurrentUser(null);
+    if (isLocalAuthTestMode) {
+      await secureAuthFlow.logout();
+      clearAuthenticatedData();
+    } else {
+      setCurrentUser(null);
+    }
     setAuthTab("login");
     loginUsername.value = "";
     loginPassword.value = "";
@@ -3356,4 +3524,8 @@ window.addEventListener("popstate", () => {
 
 bindEvents();
 setAuthTab("login");
-initialDataLoadPromise = loadAll({ applyRoute: true });
+if (isLocalAuthTestMode) {
+  activateLocalSecureAuthMode();
+} else {
+  initialDataLoadPromise = loadAll({ applyRoute: true });
+}

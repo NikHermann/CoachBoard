@@ -155,7 +155,7 @@ test("Trainingserstellung verlangt die Auth-UID als Eigentümer", async () => {
   await assertSucceeds(setDoc(doc(db, "trainings", "owned-create"), {
     title: "Owned",
     created_by_auth_uid: seeded.modernUid,
-    created_by_user_id: SYNTHETIC_DOCUMENT_IDS.legacyPassword
+    created_by_user_id: seeded.modernUid
   }));
   await assertFails(setDoc(doc(db, "trainings", "foreign-create"), {
     title: "Foreign",
@@ -165,6 +165,33 @@ test("Trainingserstellung verlangt die Auth-UID als Eigentümer", async () => {
     title: "Legacy field only",
     created_by_user_id: seeded.modernUid
   }));
+  await assertFails(setDoc(doc(db, "trainings", "mismatched-profile-create"), {
+    title: "Mismatched profile",
+    created_by_auth_uid: seeded.modernUid,
+    created_by_user_id: "foreign-profile"
+  }));
+});
+
+test("Bestehendes Training bleibt über serverseitig zugeordnetes Legacy-Profil bearbeitbar", async () => {
+  const db = harness.testEnv.authenticatedContext(seeded.migratedUid, {
+    role: "trainer",
+    profile_id: SYNTHETIC_DOCUMENT_IDS.migrated
+  }).firestore();
+  await harness.testEnv.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), "trainings", "legacy-profile-owned"), {
+      title: "Legacy profile owned",
+      created_by_user_id: SYNTHETIC_DOCUMENT_IDS.migrated
+    });
+  });
+
+  await assertSucceeds(updateDoc(doc(db, "trainings", "legacy-profile-owned"), { title: "Updated" }));
+  await assertFails(updateDoc(doc(db, "trainings", "legacy-profile-owned"), {
+    created_by_user_id: "foreign-profile"
+  }));
+  await assertFails(updateDoc(doc(db, "trainings", "legacy-profile-owned"), {
+    created_by_auth_uid: seeded.migratedUid
+  }));
+  await assertSucceeds(deleteDoc(doc(db, "trainings", "legacy-profile-owned")));
 });
 
 test("Eigentümer darf eigenes Training ändern und löschen, aber Eigentum nicht übertragen", async () => {
