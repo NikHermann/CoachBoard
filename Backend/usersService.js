@@ -9,6 +9,10 @@ import {
   deleteField
 } from "firebase/firestore";
 import { createAuthAccount } from "./authService.js";
+import { isLocalAuthTestMode } from "./localAuthTestMode.js";
+import { isProductionAuthMode } from "./productionAuthMode.js";
+
+const isSecureAuthMode = isLocalAuthTestMode || isProductionAuthMode;
 
 function normalizeRole(role) {
   const value = String(role || "").trim().toLowerCase();
@@ -81,6 +85,10 @@ function normalizeUser(userDoc) {
 }
 
 export async function fetchUsers() {
+  if (isSecureAuthMode) {
+    throw new Error("Benutzerlisten sind im sicheren Website-Modus nicht verfügbar.");
+  }
+
   const snapshot = await getDocs(collection(db, "users"));
 
   return snapshot.docs
@@ -110,6 +118,11 @@ export async function createUser(reloadUsers, userData = null) {
     const emailError = getEmailValidationError(email);
     if (emailError) {
       alert(emailError);
+      return null;
+    }
+
+    if (isSecureAuthMode) {
+      alert("Die Benutzerverwaltung erfolgt über die geschützte Vereinsadministration.");
       return null;
     }
 
@@ -257,6 +270,11 @@ export async function updateUserProfile(userId, updates, reloadUsers) {
     return null;
   }
 
+  if (isSecureAuthMode && updates?.uid) {
+    alert("Die Benutzerverwaltung erfolgt über die geschützte Vereinsadministration.");
+    return null;
+  }
+
   try {
     await updateDoc(doc(db, "users", userId), updatePayload);
 
@@ -311,6 +329,10 @@ export async function deleteUser(userId, reloadUsers) {
   }
 
   try {
+    if (isSecureAuthMode) {
+      alert("Die Benutzerverwaltung erfolgt über die geschützte Vereinsadministration.");
+      return false;
+    }
     await deleteDoc(doc(db, "users", userId));
 
     if (typeof reloadUsers === "function") {

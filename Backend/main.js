@@ -112,7 +112,7 @@ function applyBrowserRoute() {
   }
 
   if (path === "/benutzer") {
-    if (!isSecureAuthMode && state.currentUser && normalizeRole(state.currentUser.role) === "admin") {
+    if (state.currentUser && normalizeRole(state.currentUser.role) === "admin") {
       state.activeView = "user-management";
     } else {
       state.activeView = "library";
@@ -146,6 +146,11 @@ function applyBrowserRoute() {
   }
 
   if (path === "/training/neu") {
+    const role = state.currentUser ? normalizeRole(state.currentUser.role) : "spieler";
+    if (role !== "trainer" && role !== "admin") {
+      state.activeView = "library";
+      return;
+    }
     resetTrainingCreateForm();
     state.activeView = "training-create";
     return;
@@ -626,7 +631,9 @@ function updateCurrentUserUI() {
     adminUserSection?.classList.add("is-hidden");
     devRoleSection?.classList.add("is-hidden");
     userManagementNav?.classList.add("is-hidden");
+    userManagementCreateForm?.classList.add("is-hidden");
     templateOptionField?.classList.add("is-hidden");
+    createTrainingBtn?.classList.add("is-hidden");
     return;
   }
 
@@ -644,10 +651,13 @@ function updateCurrentUserUI() {
   repeatPasswordInput.value = "";
 
   const isAdmin = normalizeRole(user.role) === "admin";
+  const canCreateTraining = isAdmin || normalizeRole(user.role) === "trainer";
   adminUserSection?.classList.toggle("is-hidden", !isAdmin || isSecureAuthMode);
   devRoleSection?.classList.toggle("is-hidden", !isAdmin || isSecureAuthMode);
-  userManagementNav?.classList.toggle("is-hidden", !isAdmin || isSecureAuthMode);
+  userManagementNav?.classList.toggle("is-hidden", !isAdmin);
+  userManagementCreateForm?.classList.toggle("is-hidden", !isAdmin || isSecureAuthMode);
   templateOptionField?.classList.toggle("is-hidden", !isAdmin);
+  createTrainingBtn?.classList.toggle("is-hidden", !canCreateTraining);
 
   if (!isAdmin && trainingCreateForm.elements.is_template) {
     trainingCreateForm.elements.is_template.checked = false;
@@ -1850,6 +1860,13 @@ function renderUserManagementView() {
     return;
   }
 
+  if (isSecureAuthMode) {
+    userManagementTableWrap.innerHTML = `
+      <div class="empty-state">Die Benutzerverwaltung erfolgt über die geschützte Vereinsadministration.</div>
+    `;
+    return;
+  }
+
   if (!state.users.length) {
     userManagementTableWrap.innerHTML = `
       <div class="empty-state">Keine Benutzer vorhanden.</div>
@@ -1888,20 +1905,28 @@ function renderUserManagementView() {
               </select>
             </td>
 
-            <td data-label="Neues Passwort">
-              <input
-                class="field__control user-password-input"
-                type="password"
-                placeholder="Passwort ändern"
-                data-user-id="${user.id}"
-              />
-            </td>
+            ${isSecureAuthMode ? "" : `
+              <td data-label="Neues Passwort">
+                <input
+                  class="field__control user-password-input"
+                  type="password"
+                  placeholder="Passwort ändern"
+                  data-user-id="${user.id}"
+                />
+              </td>
+            `}
 
             <td data-label="Aktion">
               <div class="table-actions">
                 <button class="btn btn--primary btn--small user-save-btn" type="button" data-user-id="${user.id}">
                   Speichern
                 </button>
+
+                ${isSecureAuthMode && !isCurrentUser ? `
+                  <button class="btn btn--secondary btn--small user-status-btn" type="button" data-user-id="${user.id}">
+                    ${user.disabled ? "Reaktivieren" : "Sperren"}
+                  </button>
+                ` : ""}
 
                 <button class="btn btn--secondary btn--small user-delete-btn" type="button" data-user-id="${user.id}">
                   Löschen
@@ -1920,7 +1945,7 @@ function renderUserManagementView() {
           <th>Benutzer</th>
           <th>Verein</th>
           <th>Rolle</th>
-          <th>Neues Passwort</th>
+          ${isSecureAuthMode ? "" : "<th>Neues Passwort</th>"}
           <th>Aktion</th>
         </tr>
       </thead>
@@ -2388,6 +2413,12 @@ function populateTrainingFormForEdit(training) {
 }
 
 function openTrainingCreateView() {
+  const role = state.currentUser ? normalizeRole(state.currentUser.role) : "spieler";
+  if (role !== "trainer" && role !== "admin") {
+    alert("Nur Trainer und Administratoren dürfen Trainings erstellen.");
+    return;
+  }
+
   resetTrainingCreateForm();
   state.activeView = "training-create";
   state.currentPage = 1;
@@ -2528,8 +2559,14 @@ async function loadSecureTrainingData(options = {}) {
   if (!state.currentUser) return false;
 
   try {
-    const trainingEntries = await fetchTrainingEntries();
+    const [trainingEntries, managedUsers] = await Promise.all([
+      fetchTrainingEntries(),
+      Promise.resolve([state.currentUser])
+    ]);
     state.trainings = trainingEntries.map(normalizeTraining);
+    state.users = managedUsers.map(normalizeUser);
+    state.currentUser = state.users.find((user) => user.uid === state.currentUser.uid)
+      || state.currentUser;
     state.exerciseEntries = buildExerciseEntries();
     populateAgeFilter();
     populatePlayersFilter();
@@ -2597,6 +2634,12 @@ function activateSecureAuthMode() {
   loginAuthNote.textContent = isLocalAuthTestMode
     ? "Lokaler sicherer Testmodus: Anmeldung ausschließlich über Firebase Authentication."
     : "Sichere Anmeldung mit E-Mail-Adresse und Firebase Authentication.";
+
+  [adminCreateUserForm, userManagementCreateForm].forEach((form) => {
+    const passwordInput = form?.querySelector('[name="password"]');
+    passwordInput?.removeAttribute("required");
+    passwordInput?.closest(".field")?.classList.add("is-hidden");
+  });
 
   secureAuthFlow = createSecureAuthAdapter((authState) => {
     void handleSecureAuthState(authState);
@@ -2965,7 +3008,7 @@ function bindEvents() {
       event.preventDefault();
 
       if (isSecureAuthMode) {
-        alert("Benutzerkonten werden ausschließlich serverseitig verwaltet.");
+        alert("Die Benutzerverwaltung erfolgt über die geschützte Vereinsadministration.");
         return;
       }
 
@@ -2976,11 +3019,12 @@ function bindEvents() {
 
       const formData = new FormData(adminCreateUserForm);
       const username = String(formData.get("username") || "").trim();
+      const email = String(formData.get("email") || "").trim().toLowerCase();
       const club = String(formData.get("club") || "").trim();
       const role = String(formData.get("role") || "").trim();
       const password = String(formData.get("password") || "").trim();
 
-      if (!username || !club || !role || !password) {
+      if (!username || !email || !club || !role || (!isSecureAuthMode && !password)) {
         alert("Bitte alle Felder ausfüllen.");
         return;
       }
@@ -2991,17 +3035,22 @@ function bindEvents() {
         return;
       }
 
-      const passwordError = getPasswordValidationError(password);
+      const passwordError = isSecureAuthMode ? "" : getPasswordValidationError(password);
       if (passwordError) {
         alert(passwordError);
         return;
       }
 
-      await createUser(null, { username, club, role, password });
+      const created = await createUser(null, { username, email, club, role, password });
+      if (!created) return;
 
       adminCreateUserForm.reset();
       adminCreateUserForm.querySelector('[name="club"]').value = "TSV Ottensheim";
       adminCreateUserForm.querySelector('[name="role"]').value = "spieler";
+
+      if (isSecureAuthMode) {
+        alert("Benutzer wurde angelegt. Das Passwort wird ausschließlich über Firebase Passwort-Reset gesetzt.");
+      }
 
       await reloadApplicationData();
       state.activeView = "profile";
@@ -3014,7 +3063,7 @@ function bindEvents() {
       event.preventDefault();
 
       if (isSecureAuthMode) {
-        alert("Benutzerkonten werden ausschließlich serverseitig verwaltet.");
+        alert("Die Benutzerverwaltung erfolgt über die geschützte Vereinsadministration.");
         return;
       }
 
@@ -3025,11 +3074,12 @@ function bindEvents() {
 
       const formData = new FormData(userManagementCreateForm);
       const username = String(formData.get("username") || "").trim();
+      const email = String(formData.get("email") || "").trim().toLowerCase();
       const club = String(formData.get("club") || "").trim();
       const role = normalizeRole(formData.get("role"));
       const password = String(formData.get("password") || "").trim();
 
-      if (!username || !club || !role || !password) {
+      if (!username || !email || !club || !role || (!isSecureAuthMode && !password)) {
         alert("Bitte alle Felder ausfüllen.");
         return;
       }
@@ -3040,13 +3090,14 @@ function bindEvents() {
         return;
       }
 
-      const passwordError = getPasswordValidationError(password);
+      const passwordError = isSecureAuthMode ? "" : getPasswordValidationError(password);
       if (passwordError) {
         alert(passwordError);
         return;
       }
 
-      await createUser(null, { username, club, role, password });
+      const created = await createUser(null, { username, email, club, role, password });
+      if (!created) return;
 
       userManagementCreateForm.reset();
       userManagementCreateForm.querySelector('[name="club"]').value = "TSV Ottensheim";
@@ -3056,16 +3107,15 @@ function bindEvents() {
       state.activeView = "user-management";
       render();
 
-      alert("Benutzer wurde angelegt.");
+      alert(isSecureAuthMode
+        ? "Benutzer wurde angelegt. Das Passwort wird ausschließlich über Firebase Passwort-Reset gesetzt."
+        : "Benutzer wurde angelegt.");
     });
   }
 
   if (userManagementTableWrap) {
     userManagementTableWrap.addEventListener("click", async (event) => {
-      if (isSecureAuthMode) {
-        alert("Benutzerkonten und Rollen werden ausschließlich serverseitig verwaltet.");
-        return;
-      }
+      if (isSecureAuthMode) return;
 
       const saveButton = event.target.closest(".user-save-btn");
       const deleteButton = event.target.closest(".user-delete-btn");
@@ -3095,7 +3145,7 @@ function bindEvents() {
 
         if (!confirmed) return;
 
-        const result = await deleteUser(user.id);
+        const result = await deleteUser(isSecureAuthMode ? user.uid : user.id);
 
         if (!result) return;
 
@@ -3125,6 +3175,8 @@ function bindEvents() {
           club: selectedClub,
           role: selectedRole
         };
+
+        if (isSecureAuthMode) payload.uid = user.uid;
 
         if (newPassword) {
           const passwordError = getPasswordValidationError(newPassword);

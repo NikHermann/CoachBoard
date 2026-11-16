@@ -4,7 +4,7 @@ Stand: 16. November 2026
 
 ## Status und Sicherheitsgrenze
 
-Die produktionsfähige Variante ist lokal vorbereitet, aber fest deaktiviert. `PRODUCTION_AUTH_ENABLED` steht auf `false`. Die produktive Website verwendet deshalb weiterhin unverändert den bisherigen Einstieg. Ein URL-Parameter kann den neuen Produktionsmodus nicht aktivieren.
+Die produktionsfähige Variante ist auf dem lokalen Release-Branch aktiviert. `PRODUCTION_AUTH_ENABLED` steht auf `true`, greift jedoch ausschließlich auf HTTPS und den fest erlaubten Vereinsdomains. Ein URL-Parameter kann den Modus nicht auf fremden Hosts oder localhost aktivieren. Der Release wurde noch nicht veröffentlicht.
 
 Es gab keinen Zugriff auf produktive Firebase-Daten, keine Änderung eines Kontos, Claims, Trainings oder einer Übung, keine Regelveröffentlichung, keinen echten Passwort-Reset, keinen Commit, Push und kein Deployment.
 
@@ -14,7 +14,7 @@ Es gab keinen Zugriff auf produktive Firebase-Daten, keine Änderung eines Konto
 |---|---|---|
 | `Backend/main.js` | Gemeinsamer `isSecureAuthMode` für Emulator und die später freizugebende Produktionsvariante; Firebase-Login, Auth-Observer, Logout, Reset, gezieltes Profilladen und `created_by_auth_uid` werden darüber verwendet. Clientseitige Registrierung, Rollen- und Benutzerverwaltung bleiben im sicheren Modus gesperrt. | Der getestete sichere Ablauf soll ohne unsicheren Firestore-Passwort-Fallback produktiv nutzbar sein. |
 | `Backend/productionAuthMode.js` | Neue, standardmäßig deaktivierte Release-Sperre; eine spätere Aktivierung ist nur auf HTTPS und `tsv-trainingsplatz.at` beziehungsweise `www.tsv-trainingsplatz.at` zulässig. | Kein URL-Parameter und kein gewöhnlicher Push darf den Produktionsmodus einschalten. |
-| `firestore.target.rules` | Profilerstellung durch Browser vollständig gesperrt (`allow create: if false`). | Alle aktiven Profile bestehen bereits; ein neu angelegtes Auth-Konto darf sich nicht selbst ein verwendbares Firestore-Profil geben. |
+| `firestore.target.rules` | Profilerstellung und fremde Profilabfragen gesperrt; Trainingswrites auf Trainer-Eigentümer beziehungsweise Admins begrenzt; Eigentümerfelder unveränderbar; Mustertrainings nur für Admins. | Clientzugriffe erhalten nur die tatsächlich von der Anwendung benötigten Rechte. |
 | `tests/firebase/productionAuthMode.test.js` | Tests für deaktivierten Schalter, URL-Unwirksamkeit und Host-/HTTPS-Bindung. | Regression der Aktivierungsgrenze. |
 | `tests/firebase/firestoreTargetRules.test.js` | Erwartung für neue Profile auf sichere Ablehnung umgestellt. | Regression der neuen Profilerstellungssperre. |
 | `FIREBASE_PRODUKTIV_UMSTELLUNG.md` | Diese Freigabe-, Risiko- und Rücknahmedokumentation. | Nachvollziehbare, einzeln rückgängig machbare Vorbereitung. |
@@ -40,7 +40,7 @@ Konkrete Quellstellen im aktuellen Arbeitsstand:
 
 ### Aktuell produktiv – unverändert
 
-Solange `PRODUCTION_AUTH_ENABLED === false` gilt, lädt der öffentliche Einstieg wie bisher Trainings und die Firestore-Benutzerliste und verwendet den bisherigen Login. Diese Variante bleibt bis zur gesonderten Umschaltung bestehen und ist nicht der sichere Zielzustand.
+Auf dem Release-Branch verhindert `PRODUCTION_AUTH_ENABLED === true` den bisherigen öffentlichen Firestore-Login und aktiviert Firebase Authentication. Der derzeit veröffentlichte Stand bleibt bis zum kontrollierten Vercel-Release unverändert.
 
 ### Vorbereiteter Zielablauf
 
@@ -77,14 +77,15 @@ Vor der Umschaltung muss der vorbereitete Read-only-Audit bestätigen:
 `firestore.target.rules` setzt voraus:
 
 - anonyme Zugriffe sind vollständig gesperrt;
-- Profile sind nur gezielt für den Besitzer beziehungsweise per Einzelabruf für Admins lesbar;
+- Profile sind nur gezielt für den jeweiligen Besitzer lesbar; administrative Abfragen müssen serverseitig erfolgen;
 - Collection-Listing von Benutzern ist auch für Admin-Clients gesperrt;
 - Passwortprofile bleiben gesperrt;
 - Besitzer dürfen nur Benutzername und Verein ändern;
 - Client-Profilanlage, Rollenänderung und Löschung sind gesperrt;
 - Trainings sind nur für authentifizierte Konten lesbar;
-- neue Trainings müssen Auth-UID und bestätigte Profil-ID enthalten;
+- neue Trainings dürfen nur Trainer oder Admins erstellen und müssen Auth-UID sowie bestätigte Profil-ID enthalten;
 - Trainingsbesitz kann nicht vom normalen Client übertragen werden;
+- Spieler besitzen ausschließlich Leserechte auf Trainings; Trainer ändern/löschen nur eigene Nicht-Mustertrainings; Admins verwalten alle Trainings, ohne Eigentümerfelder zu verändern;
 - Übungen sind authentifiziert lesbar und nur mit Trainer- oder Admin-Claim schreibbar;
 - unbekannte Collections sind vollständig gesperrt.
 
@@ -106,16 +107,16 @@ Ein echter Reset-Versand wurde nicht getestet. Vor Freigabe müssen Absender, E-
 | Logout | Lokal funktionsfähig | Keine weitere Voraussetzung. |
 | Passwort-Reset | Lokal im Emulator funktionsfähig | Echter Versand benötigt gesonderte Freigabe und Konfigurationsprüfung. |
 | Bibliothek, Meine Trainings, Mustertrainings | Lokal kompatibel | Zielregeln und eindeutige Besitzerzuordnung müssen veröffentlicht sein. |
-| Training erstellen/bearbeiten | Lokal kompatibel | Neue Dokumente benötigen beide Besitzerfelder. Historische IDs bleiben bestehen. |
-| Training löschen | Regeltechnisch für Eigentümer beziehungsweise Admin möglich; UI bleibt restriktiver | Vor Veröffentlichung je Rolle im Browser prüfen. |
+| Training erstellen/bearbeiten | Lokal kompatibel für Trainer und Admins; Spielerzugriff wird in UI und Regeln gesperrt | Neue Dokumente benötigen beide Besitzerfelder. Historische IDs bleiben bestehen. |
+| Training löschen | Trainer löschen eigene Nicht-Mustertrainings regeltechnisch; die aktuelle UI bietet Löschen weiterhin nur Admins an | Kein Sicherheitsproblem, aber bestehende UI ist restriktiver als die Regeln. |
 | Übungen lesen | Kompatibel für authentifizierte Konten | Vollständiger Browsertest erforderlich. |
 | Übungen bearbeiten | Regeln erlauben nur Trainer/Admin | Spieler-UI kann weiterhin Bedienelemente zeigen; der Server verweigert den Write. UX vor Freigabe prüfen. |
 | Eigenes Profil | Benutzername/Verein kompatibel; Passwort über Auth | E-Mail-, UID- und Rollenänderung sind absichtlich nicht als Client-Write möglich. |
 | Trainer-/Adminrechte | Claim-basiert vorbereitet | Produktive Claims müssen bestätigt und Token nach Claim-Änderung erneuert werden. |
-| Benutzerverwaltung | Im sicheren Modus absichtlich deaktiviert | Kritischer Blocker, falls sie beim Start benötigt wird: Admin-Service ist vorhanden, aber noch nicht als autorisierter produktiver Endpoint in `functions/index.js` angebunden. |
+| Benutzerverwaltung | Admins sehen eine ausdrückliche Sperrmeldung; direkte Browseraktionen sind deaktiviert | Der vorhandene Admin-Service ist noch nicht als autorisierter produktiver Endpoint in `functions/index.js` angebunden. |
 | KI-Trainingsassistent | Unverändert nur lokal verfügbar | `generateTrainingPlan` verweigert Produktion sowohl im Frontend als auch serverseitig. Eine produktive Freigabe ist ein separates Sicherheitsprojekt. |
 
-Keine Funktion wurde stillschweigend entfernt. Nicht kompatible administrative Oberflächen sind im sicheren Modus ausgeblendet und ihre Event-Handler lehnen direkte Aufrufe zusätzlich ab.
+Keine Funktion wurde stillschweigend entfernt. Nicht kompatible administrative Schreibformulare sind im sicheren Modus ausgeblendet und ihre Event-Handler lehnen direkte Aufrufe zusätzlich ab. Die Benutzerverwaltung selbst bleibt für Admins erreichbar und erklärt die noch fehlende Serveranbindung ausdrücklich.
 
 ## Kritische Blocker vor Aktivierung
 
@@ -131,7 +132,7 @@ Keine Funktion wurde stillschweigend entfernt. Nicht kompatible administrative O
 Die einzige Codefreigabe ist in `Backend/productionAuthMode.js`:
 
 ```js
-export const PRODUCTION_AUTH_ENABLED = false;
+export const PRODUCTION_AUTH_ENABLED = true;
 ```
 
 Ein späterer, separat geprüfter Release ändert genau diesen Wert auf `true`. Der Resolver akzeptiert danach ausschließlich HTTPS auf den beiden fest eingetragenen Vereinsdomains. Query-Parameter, localhost, Firebase-Hosting-Vorschau-URLs und fremde Domains aktivieren den Modus nicht.
@@ -189,7 +190,7 @@ Ausgeführt ausschließlich mit `demo-coachboard-auth`, Auth Emulator `127.0.0.1
 npm.cmd test
 ```
 
-Ergebnis: **84 von 84 Tests bestanden**. Enthalten sind Firebase-Login, falsche Zugangsdaten, Passwort-Reset, Session-Wiederherstellung, Logout, Rollenclaims, Legacy-Profil-ID, fehlende Profile, Zielregeln, Trainingsbesitz, Übungen, unbekannte Collections, Produktionsschalter und Audit-Sicherheit.
+Ergebnis: **85 von 85 Tests bestanden**. Enthalten sind Firebase-Login, falsche Zugangsdaten, Passwort-Reset, Session-Wiederherstellung, Logout, Rollenclaims, Legacy-Profil-ID, fehlende Profile, Zielregeln, Trainingsbesitz, Spieler-/Trainer-/Adminabgrenzung, Mustertrainings, Übungen, unbekannte Collections, Produktionsschalter und Audit-Sicherheit.
 
 Zusätzlich erfolgreich:
 
@@ -200,6 +201,6 @@ node --check tests/firebase/productionAuthMode.test.js
 npm.cmd run build
 ```
 
-Der Vite-Produktions-Build verarbeitete 33 Module erfolgreich. Der erzeugte Build enthält weiterhin `PRODUCTION_AUTH_ENABLED === false` und wurde nicht veröffentlicht.
+Der finale Vite-Produktions-Build und die vollständige Regression werden auf dem Release-Branch erneut ausgeführt. Der erzeugte Build wird bis zur abschließenden Freigabe nicht veröffentlicht.
 
 Noch auszuführen: Browser-E2E des später ausdrücklich aktivierten endgültigen Release-Builds. Ein echter produktiver Login, Reset-Mail-Versand und produktiver Regeltest wurden absichtlich nicht durchgeführt. `git diff --check` meldet ausschließlich Zeilenende beziehungsweise nachgestellte Leerzeichen in bereits generierten Buildartefakten; die bearbeiteten Quelldateien enthalten keine gemeldeten Diff-Fehler.

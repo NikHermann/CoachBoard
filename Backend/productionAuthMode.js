@@ -1,6 +1,6 @@
-// Bewusste Release-Sperre: Eine URL kann den produktiven Auth-Modus nicht aktivieren.
-// Erst in einem gesondert freigegebenen Release auf true setzen.
-export const PRODUCTION_AUTH_ENABLED = false;
+// Im freigegebenen Release ausschließlich auf den unten festgelegten HTTPS-Domains aktiv.
+// URL-Parameter, localhost und fremde Hosts können diesen Modus nicht einschalten.
+export const PRODUCTION_AUTH_ENABLED = true;
 
 const PRODUCTION_HOSTS = new Set([
   "tsv-trainingsplatz.at",

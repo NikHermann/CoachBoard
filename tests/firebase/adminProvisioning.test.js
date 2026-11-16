@@ -146,6 +146,18 @@ test("Rollen spieler, trainer und admin werden nur serverseitig gesetzt", async 
   assert.equal(revoked.role, "spieler");
 });
 
+test("Rollenänderung erhält fremde vorhandene Custom Claims", async () => {
+  const uid = await createPasswordAccount("claims.preserved@example.invalid", "spieler");
+  await adminSdk.auth.setCustomUserClaims(uid, { role: "spieler", feature_flag: "retained" });
+
+  await service.setRole(caller, uid, "trainer");
+
+  assert.deepEqual((await adminSdk.auth.getUser(uid)).customClaims, {
+    role: "trainer",
+    feature_flag: "retained"
+  });
+});
+
 test("eigene Adminrolle und eigenes Administratorkonto können nicht verändert werden", async () => {
   await assert.rejects(() => service.setRole(caller, caller.uid, "spieler"), {
     code: "self-management-denied"
@@ -381,4 +393,69 @@ test("Admin-SDK-Adapter verweigert fehlende Emulatorisolation", async () => {
   } finally {
     process.env.GCLOUD_PROJECT = originalProject;
   }
+});
+
+test("Admin listet, bearbeitet, sperrt und reaktiviert bestehende Benutzer serverseitig", async () => {
+  const uid = await createPasswordAccount("managed.user@example.invalid", "spieler");
+  const unlinked = await adminSdk.auth.createUser({ email: "unlinked.user@example.invalid" });
+  const listed = await service.listUsers(caller);
+  assert.equal(listed.some((user) => user.uid === uid && user.email === "managed.user@example.invalid"), true);
+  assert.equal(listed.some((user) => user.uid === unlinked.uid && user.mappingStatus === "profile-not-found"), true);
+
+  const updated = await service.updateUser(caller, {
+    uid,
+    username: "synthetic-managed-renamed",
+    club: "Synthetic United",
+    role: "trainer"
+  });
+  assert.equal(updated.role, "trainer");
+  assert.equal(updated.username, "synthetic-managed-renamed");
+  assert.equal((await adminSdk.auth.getUser(uid)).customClaims.role, "trainer");
+
+  assert.equal((await service.disableUser(caller, uid)).disabled, true);
+  assert.equal((await service.reactivateUser(caller, uid)).disabled, false);
+});
+
+test("kontrolliertes Löschen schützt Selbstkonto und bestehende Trainingsreferenzen", async () => {
+  const referencedUid = await createPasswordAccount("referenced.user@example.invalid", "trainer");
+  await adminSdk.firestore.collection("trainings").doc("managed-reference").set({
+    created_by_user_id: referencedUid,
+    created_by_auth_uid: referencedUid
+  });
+  await assert.rejects(() => service.deleteUser(caller, referencedUid), {
+    code: "user-has-training-references"
+  });
+  assert.equal((await adminSdk.auth.getUser(referencedUid)).uid, referencedUid);
+
+  const deletableUid = await createPasswordAccount("deletable.user@example.invalid", "spieler");
+  assert.deepEqual(await service.deleteUser(caller, deletableUid), { uid: deletableUid, deleted: true });
+  await assert.rejects(() => adminSdk.auth.getUser(deletableUid), { code: "auth/user-not-found" });
+  assert.equal((await adminSdk.firestore.collection("users").doc(deletableUid).get()).exists, false);
+  await assert.rejects(() => service.deleteUser(caller, caller.uid), { code: "self-management-denied" });
+});
+
+test("bestehendes Auth-Konto wird ohne Neuanlage sicher mit einem Profil verknüpft", async () => {
+  const existing = await adminSdk.auth.createUser({ email: "existing.link@example.invalid" });
+  await adminSdk.firestore.collection("users").doc("existing-profile-id").set({
+    email: existing.email,
+    username: "synthetic-existing-link",
+    club: "Synthetic FC",
+    role: "spieler"
+  });
+  const linked = await service.linkExistingUser(caller, {
+    uid: existing.uid,
+    profileId: "existing-profile-id",
+    role: "trainer",
+    identityVerified: true
+  });
+  assert.equal(linked.uid, existing.uid);
+  assert.equal(linked.profileId, "existing-profile-id");
+  assert.deepEqual((await adminSdk.auth.getUser(existing.uid)).customClaims, {
+    role: "trainer",
+    profile_id: "existing-profile-id"
+  });
+  assert.equal(
+    (await adminSdk.firestore.collection("users").doc("existing-profile-id").get()).data().uid,
+    existing.uid
+  );
 });

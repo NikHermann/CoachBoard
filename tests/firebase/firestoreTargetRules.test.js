@@ -69,6 +69,7 @@ test("Legacy-Passwortprofil bleibt für Benutzer und Admin gesperrt", async () =
   const adminDb = harness.testEnv.authenticatedContext("synthetic-admin", { role: "admin" }).firestore();
   await assertFails(getDoc(doc(legacyDb, "users", SYNTHETIC_DOCUMENT_IDS.legacyPassword)));
   await assertFails(getDoc(doc(adminDb, "users", SYNTHETIC_DOCUMENT_IDS.legacyPassword)));
+  await assertFails(getDoc(doc(adminDb, "users", SYNTHETIC_DOCUMENT_IDS.legacyNoPassword)));
   await assertFails(getDocs(collection(adminDb, "users")));
 });
 
@@ -151,7 +152,7 @@ test("Authentifizierte Rollen dürfen Trainings lesen", async () => {
 });
 
 test("Trainingserstellung verlangt die Auth-UID als Eigentümer", async () => {
-  const db = harness.testEnv.authenticatedContext(seeded.modernUid, { role: "spieler" }).firestore();
+  const db = harness.testEnv.authenticatedContext(seeded.modernUid, { role: "trainer" }).firestore();
   await assertSucceeds(setDoc(doc(db, "trainings", "owned-create"), {
     title: "Owned",
     created_by_auth_uid: seeded.modernUid,
@@ -169,6 +170,24 @@ test("Trainingserstellung verlangt die Auth-UID als Eigentümer", async () => {
     title: "Mismatched profile",
     created_by_auth_uid: seeded.modernUid,
     created_by_user_id: "foreign-profile"
+  }));
+});
+
+test("Spieler schreiben keine Trainings und Mustertrainings bleiben Admins vorbehalten", async () => {
+  const playerDb = harness.testEnv.authenticatedContext(seeded.modernUid, { role: "spieler" }).firestore();
+  const trainerDb = harness.testEnv.authenticatedContext(seeded.modernUid, { role: "trainer" }).firestore();
+  await assertFails(setDoc(doc(playerDb, "trainings", "player-create"), {
+    title: "Denied",
+    created_by_auth_uid: seeded.modernUid,
+    created_by_user_id: seeded.modernUid
+  }));
+  await assertFails(updateDoc(doc(playerDb, "trainings", "modern-owned-training"), { title: "Denied" }));
+  await assertFails(deleteDoc(doc(playerDb, "trainings", "modern-owned-training")));
+  await assertFails(setDoc(doc(trainerDb, "trainings", "trainer-template"), {
+    title: "Denied template",
+    is_template: true,
+    created_by_auth_uid: seeded.modernUid,
+    created_by_user_id: seeded.modernUid
   }));
 });
 
@@ -195,7 +214,7 @@ test("Bestehendes Training bleibt über serverseitig zugeordnetes Legacy-Profil 
 });
 
 test("Eigentümer darf eigenes Training ändern und löschen, aber Eigentum nicht übertragen", async () => {
-  const db = harness.testEnv.authenticatedContext(seeded.modernUid, { role: "spieler" }).firestore();
+  const db = harness.testEnv.authenticatedContext(seeded.modernUid, { role: "trainer" }).firestore();
   await assertSucceeds(updateDoc(doc(db, "trainings", "modern-owned-training"), { title: "Updated" }));
   await assertFails(updateDoc(doc(db, "trainings", "modern-owned-training"), {
     created_by_auth_uid: "another-user"
@@ -213,7 +232,16 @@ test("Fremde Trainings und Legacy-Trainings sind für normale Benutzer nicht sch
 test("Admin-Claim darf Trainings verwalten, Firestore-Profilrolle allein nicht", async () => {
   const adminDb = harness.testEnv.authenticatedContext("synthetic-admin", { role: "admin" }).firestore();
   const profileOnlyDb = harness.testEnv.authenticatedContext(seeded.modernUid, { role: "spieler" }).firestore();
+  await assertSucceeds(setDoc(doc(adminDb, "trainings", "admin-template"), {
+    title: "Admin template",
+    is_template: true,
+    created_by_auth_uid: "synthetic-admin",
+    created_by_user_id: "synthetic-admin"
+  }));
   await assertSucceeds(updateDoc(doc(adminDb, "trainings", SYNTHETIC_DOCUMENT_IDS.training), { title: "Admin update" }));
+  await assertFails(updateDoc(doc(adminDb, "trainings", "modern-owned-training"), {
+    created_by_user_id: "transferred-profile"
+  }));
   await assertSucceeds(deleteDoc(doc(adminDb, "trainings", SYNTHETIC_DOCUMENT_IDS.training)));
   await assertFails(updateDoc(doc(profileOnlyDb, "trainings", "modern-owned-training"), {
     created_by_auth_uid: "another-user"

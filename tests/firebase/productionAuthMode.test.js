@@ -5,13 +5,13 @@ import {
   resolveProductionAuthMode
 } from "../../Backend/productionAuthMode.js";
 
-test("produktiver Auth-Modus ist im vorbereiteten Release fest deaktiviert", () => {
-  assert.equal(PRODUCTION_AUTH_ENABLED, false);
+test("produktiver Auth-Modus ist im Release ausschließlich auf der Vereinsdomain aktiv", () => {
+  assert.equal(PRODUCTION_AUTH_ENABLED, true);
   assert.equal(resolveProductionAuthMode({
     protocol: "https:",
     hostname: "tsv-trainingsplatz.at",
     search: "?authMode=production"
-  }), false);
+  }), true);
 });
 
 test("URL-Parameter und fremde Hosts können den Produktionsmodus nicht aktivieren", () => {
@@ -24,7 +24,7 @@ test("URL-Parameter und fremde Hosts können den Produktionsmodus nicht aktivier
   }
 });
 
-test("eine spätere Freigabe bleibt auf HTTPS und die Vereinsdomain begrenzt", () => {
+test("die Release-Freigabe bleibt auf HTTPS und die Vereinsdomain begrenzt", () => {
   assert.equal(resolveProductionAuthMode({
     protocol: "https:",
     hostname: "tsv-trainingsplatz.at"
