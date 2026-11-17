@@ -119,7 +119,9 @@ function applyBrowserRoute() {
   }
 
   if (path === "/benutzer") {
-    if (state.currentUser && normalizeRole(state.currentUser.role) === "admin") {
+    if (!isSecureAuthMode
+        && state.currentUser
+        && normalizeRole(state.currentUser.role) === "admin") {
       state.activeView = "user-management";
     } else {
       state.activeView = "library";
@@ -661,7 +663,7 @@ function updateCurrentUserUI() {
   const canCreateTraining = isAdmin || normalizeRole(user.role) === "trainer";
   adminUserSection?.classList.toggle("is-hidden", !isAdmin || isSecureAuthMode);
   devRoleSection?.classList.toggle("is-hidden", !isAdmin || isSecureAuthMode);
-  userManagementNav?.classList.toggle("is-hidden", !isAdmin);
+  userManagementNav?.classList.toggle("is-hidden", !isAdmin || isSecureAuthMode);
   userManagementCreateForm?.classList.toggle("is-hidden", !isAdmin || isSecureAuthMode);
   templateOptionField?.classList.toggle("is-hidden", !isAdmin);
   createTrainingBtn?.classList.toggle("is-hidden", !canCreateTraining);
@@ -670,7 +672,7 @@ function updateCurrentUserUI() {
     trainingCreateForm.elements.is_template.checked = false;
   }
 
-  if (!isAdmin && state.activeView === "user-management") {
+  if ((!isAdmin || isSecureAuthMode) && state.activeView === "user-management") {
     state.activeView = "library";
   }
 }
@@ -1153,7 +1155,6 @@ function createTrainingSketchMarkup(training) {
 function renderTrainingDetail() {
   const training = getSelectedTraining();
   const editable = canEditTraining(training, state.detailSourceView);
-  const isAdmin = state.currentUser && normalizeRole(state.currentUser.role) === "admin";
 
   trainingDetailWarmup.parentElement.classList.remove("is-hidden");
   trainingDetailExercises.parentElement.classList.remove("is-hidden");
@@ -1165,7 +1166,7 @@ function renderTrainingDetail() {
 
   detailPrintBtn.classList.toggle("is-hidden", !training);
   detailEditBtn.classList.toggle("is-hidden", !editable);
-  detailDeleteBtn.classList.toggle("is-hidden", !(isAdmin && training));
+  detailDeleteBtn.classList.toggle("is-hidden", !editable);
 
   if (!training) {
     detailPrintBtn.classList.add("is-hidden");
@@ -3275,7 +3276,10 @@ function bindEvents() {
     link.addEventListener("click", () => {
       const targetView = link.dataset.view;
 
-      if (targetView === "user-management" && (!state.currentUser || normalizeRole(state.currentUser.role) !== "admin")) {
+      if (targetView === "user-management"
+          && (isSecureAuthMode
+            || !state.currentUser
+            || normalizeRole(state.currentUser.role) !== "admin")) {
         alert("Nur Admins dürfen die Benutzerverwaltung öffnen.");
         return;
       }
@@ -3315,15 +3319,15 @@ function bindEvents() {
   });
 
   detailDeleteBtn.addEventListener("click", async () => {
-    if (!state.currentUser || normalizeRole(state.currentUser.role) !== "admin") {
-      alert("Nur Admins dürfen Trainings löschen.");
-      return;
-    }
-
     const training = getSelectedTraining();
 
     if (!training) {
       alert("Kein Training ausgewählt.");
+      return;
+    }
+
+    if (!canEditTraining(training, state.detailSourceView)) {
+      alert("Du darfst dieses Training nicht löschen.");
       return;
     }
 

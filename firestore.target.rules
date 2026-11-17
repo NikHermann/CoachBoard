@@ -40,10 +40,20 @@ service cloud.firestore {
         && request.auth.uid == resource.data.uid;
     }
 
+    function validEditableProfileFields() {
+      return request.resource.data.username is string
+        && request.resource.data.username.size() > 0
+        && request.resource.data.username.size() <= 80
+        && request.resource.data.club is string
+        && request.resource.data.club.size() > 0
+        && request.resource.data.club.size() <= 120;
+    }
+
     function validOwnProfileUpdate(userId) {
       return ownsProfile(userId)
         && hasNoStoredPassword(resource.data)
         && hasNoStoredPassword(request.resource.data)
+        && validEditableProfileFields()
         && request.resource.data.uid == resource.data.uid
         && request.resource.data.role == resource.data.role
         && request.resource.data.email == resource.data.email

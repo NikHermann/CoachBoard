@@ -101,6 +101,16 @@ test("Eigenes Profil erlaubt nur Benutzername und Verein", async () => {
   await assertFails(updateDoc(doc(db, "users", seeded.modernUid), { uid: "changed-uid" }));
   await assertFails(updateDoc(doc(db, "users", seeded.modernUid), { role: "admin" }));
   await assertFails(updateDoc(doc(db, "users", seeded.modernUid), { password: "synthetic-denied-value" }));
+  await assertFails(updateDoc(doc(db, "users", seeded.modernUid), { username: "" }));
+  await assertFails(updateDoc(doc(db, "users", seeded.modernUid), { username: 42 }));
+  await assertFails(updateDoc(doc(db, "users", seeded.modernUid), { club: "x".repeat(121) }));
+});
+
+test("Admin claim does not replace profile ownership or server-side user management", async () => {
+  const db = harness.testEnv.authenticatedContext("synthetic-admin", { role: "admin" }).firestore();
+  await assertFails(getDoc(doc(db, "users", seeded.modernUid)));
+  await assertFails(updateDoc(doc(db, "users", seeded.modernUid), { username: "Admin changed this" }));
+  await assertFails(deleteDoc(doc(db, "users", seeded.modernUid)));
 });
 
 test("Neue Profile sind auch für authentifizierte Benutzer gesperrt", async () => {
@@ -149,6 +159,27 @@ test("Authentifizierte Rollen dürfen Trainings lesen", async () => {
   await assertSucceeds(getDocs(collection(playerDb, "trainings")));
   await assertSucceeds(getDocs(collection(trainerDb, "trainings")));
   await assertSucceeds(getDocs(collection(adminDb, "trainings")));
+});
+
+test("Bibliothek und vollstÃ¤ndiger Trainings-Lebenszyklus funktionieren mit Zielregeln", async () => {
+  const db = harness.testEnv.authenticatedContext(seeded.modernUid, { role: "trainer" }).firestore();
+
+  await assertSucceeds(getDocs(collection(db, "trainings")));
+  await assertSucceeds(getDocs(collection(db, "exercises")));
+  await assertSucceeds(setDoc(doc(db, "trainings", "trainer-crud-regression"), {
+    title: "Trainer lifecycle",
+    age_group: "U12",
+    required_players: 12,
+    duration: 60,
+    exercises: [],
+    is_template: false,
+    created_by_auth_uid: seeded.modernUid,
+    created_by_user_id: seeded.modernUid
+  }));
+  await assertSucceeds(updateDoc(doc(db, "trainings", "trainer-crud-regression"), {
+    title: "Trainer lifecycle updated"
+  }));
+  await assertSucceeds(deleteDoc(doc(db, "trainings", "trainer-crud-regression")));
 });
 
 test("Trainingserstellung verlangt die Auth-UID als Eigentümer", async () => {
@@ -261,11 +292,15 @@ test("Nur Trainer- und Admin-Claims dürfen Übungen schreiben", async () => {
   const adminDb = harness.testEnv.authenticatedContext("synthetic-admin", { role: "admin" }).firestore();
   await assertFails(setDoc(doc(playerDb, "exercises", "player-exercise"), { title: "Denied" }));
   await assertSucceeds(setDoc(doc(trainerDb, "exercises", "trainer-exercise"), { title: "Allowed" }));
+  await assertSucceeds(deleteDoc(doc(trainerDb, "exercises", "trainer-exercise")));
   await assertSucceeds(updateDoc(doc(adminDb, "exercises", SYNTHETIC_DOCUMENT_IDS.exercise), { title: "Admin" }));
+  await assertSucceeds(deleteDoc(doc(adminDb, "exercises", SYNTHETIC_DOCUMENT_IDS.exercise)));
 });
 
 test("Unbekannte Collections bleiben für alle Rollen gesperrt", async () => {
   const adminDb = harness.testEnv.authenticatedContext("synthetic-admin", { role: "admin" }).firestore();
   await assertFails(getDocs(collection(adminDb, "unknown")));
   await assertFails(setDoc(doc(adminDb, "unknown", "document"), { value: true }));
+  await assertFails(getDocs(collection(adminDb, "trainings", "known", "private")));
+  await assertFails(setDoc(doc(adminDb, "trainings", "known", "private", "document"), { value: true }));
 });
