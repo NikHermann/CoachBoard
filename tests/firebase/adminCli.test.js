@@ -7,6 +7,7 @@ const require = createRequire(import.meta.url);
 const {
   actionConfirmation,
   assertRuntimeIsolation,
+  collectInput,
   execute,
   parseArguments,
   sanitizeResult
@@ -35,6 +36,32 @@ test("Spark-Admin-CLI leitet die Freigabe registrierter Konten an den Admin-Serv
   const approved = await execute(service, caller, "approve", input);
   assert.deepEqual(received, { caller, input });
   assert.deepEqual(approved, { uid: "pending-uid", role: "spieler" });
+});
+
+test("Spark-Admin-CLI verlangt vor der Freigabe die externe Identitäts- und E-Mail-Prüfung", async () => {
+  const rejectedAnswers = ["pending-uid", "nicht geprüft"];
+  await assert.rejects(() => collectInput("approve", {
+    question: async () => rejectedAnswers.shift()
+  }), /nicht bestätigt/);
+
+  const acceptedAnswers = [
+    "pending-uid",
+    "IDENTITAET UND E-MAIL GEPRUEFT",
+    "synthetic-pending",
+    "Synthetic FC",
+    "spieler"
+  ];
+  const action = await collectInput("approve", {
+    question: async () => acceptedAnswers.shift()
+  });
+  assert.deepEqual(action.input, {
+    uid: "pending-uid",
+    username: "synthetic-pending",
+    club: "Synthetic FC",
+    role: "spieler",
+    identityVerified: true,
+    emailAddressVerifiedExternally: true
+  });
 });
 
 test("Spark-Admin-CLI blockiert falsche Projektkennung und gemischten Betrieb", () => {
@@ -111,8 +138,13 @@ test("Produktive Selbstregistrierung schreibt nur in Firebase Auth und zeigt den
   assert.match(html, /name="password_confirmation"/);
   assert.match(html, /id="back-to-login-btn"/);
   assert.match(authService, /registerPendingAccount[\s\S]*createUserWithEmailAndPassword/);
-  assert.match(authService, /registerPendingAccount[\s\S]*sendEmailVerification/);
+  const registrationImplementation = authService.match(
+    /export async function registerPendingAccount[\s\S]*?\r?\n}\r?\n\r?\n\/\/ Logout/
+  )?.[0] || "";
+  assert.notEqual(registrationImplementation, "");
+  assert.doesNotMatch(registrationImplementation, /sendEmailVerification/);
   assert.doesNotMatch(authService, /registerPendingAccount[\s\S]*setDoc\(/);
   assert.match(main, /registerPendingAccount\(username, email, password\)/);
   assert.doesNotMatch(main, /registerPendingAccount\([^)]*role/);
+  assert.match(main, /Es wird keine Bestätigungs-E-Mail versendet/);
 });

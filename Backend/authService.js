@@ -103,7 +103,6 @@ export async function registerPendingAccount(username, email, password) {
     const credential = await createUserWithEmailAndPassword(secondaryAuth, email, password);
     createdUser = credential.user;
     await updateProfile(createdUser, { displayName: username });
-    await sendEmailVerification(createdUser);
     await signOut(secondaryAuth);
     return Object.freeze({ uid: createdUser.uid, pendingApproval: true });
   } catch (error) {

@@ -94,13 +94,21 @@ async function collectInput(command, prompt) {
   }
   const uid = (await prompt.question("Ziel-UID: ")).trim();
   if (command === "approve") {
+    const verified = (await prompt.question(
+      "Identität und angegebene E-Mail anderweitig geprüft? Exakt IDENTITAET UND E-MAIL GEPRUEFT eingeben: "
+    )).trim();
+    if (verified !== "IDENTITAET UND E-MAIL GEPRUEFT") {
+      throw new Error("Identitäts- und E-Mail-Prüfung wurde nicht bestätigt.");
+    }
     return {
       target: uid,
       input: {
         uid,
         username: (await prompt.question("Benutzername: ")).trim(),
         club: (await prompt.question("Verein: ")).trim(),
-        role: (await prompt.question("Rolle (spieler/trainer/admin): ")).trim()
+        role: (await prompt.question("Rolle (spieler/trainer/admin): ")).trim(),
+        identityVerified: true,
+        emailAddressVerifiedExternally: true
       }
     };
   }
@@ -188,6 +196,7 @@ if (require.main === module) {
 module.exports = {
   actionConfirmation,
   assertRuntimeIsolation,
+  collectInput,
   execute,
   parseArguments,
   sanitizeResult

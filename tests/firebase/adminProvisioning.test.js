@@ -111,13 +111,14 @@ test("berechtigter Administrator erstellt deaktiviert-gesichert ein vollständig
   assert.equal(Object.hasOwn(profile.data(), "password"), false);
 });
 
-test("Selbstregistrierung bleibt bis zur verifizierten Spark-Admin-Freigabe ohne Profil und Claims", async () => {
-  const pending = await adminSdk.auth.createUser({
-    email: "pending.registration@example.invalid",
-    password: SYNTHETIC_PASSWORD,
-    displayName: "synthetic-pending",
-    emailVerified: false
-  });
+test("Selbstregistrierung wird ohne E-Mail-Verifikation erst nach bestätigter Spark-Admin-Freigabe nutzbar", async () => {
+  const registration = await createUserWithEmailAndPassword(
+    harness.auth,
+    "pending.registration@example.invalid",
+    SYNTHETIC_PASSWORD
+  );
+  const pending = await adminSdk.auth.getUser(registration.user.uid);
+  await signOut(harness.auth);
 
   assert.deepEqual((await adminSdk.auth.getUser(pending.uid)).customClaims || {}, {});
   assert.equal((await adminSdk.firestore.collection("users").doc(pending.uid).get()).exists, false);
@@ -126,21 +127,63 @@ test("Selbstregistrierung bleibt bis zur verifizierten Spark-Admin-Freigabe ohne
     username: "synthetic-pending",
     club: "Synthetic FC",
     role: "trainer"
-  }), { code: "pending-email-not-verified" });
+  }), { code: "external-verification-required" });
 
-  await adminSdk.auth.updateUser(pending.uid, { emailVerified: true });
   const approved = await service.approvePendingUser(caller, {
     uid: pending.uid,
     username: "synthetic-pending",
     club: "Synthetic FC",
-    role: "trainer"
+    role: "trainer",
+    identityVerified: true,
+    emailAddressVerifiedExternally: true
   });
 
   assert.equal(approved.role, "trainer");
-  assert.deepEqual((await adminSdk.auth.getUser(pending.uid)).customClaims, { role: "trainer" });
+  const approvedAuthUser = await adminSdk.auth.getUser(pending.uid);
+  assert.equal(approvedAuthUser.emailVerified, false);
+  assert.deepEqual(approvedAuthUser.customClaims, { role: "trainer" });
   const profile = await adminSdk.firestore.collection("users").doc(pending.uid).get();
   assert.equal(profile.data().uid, pending.uid);
   assert.equal(Object.hasOwn(profile.data(), "password"), false);
+
+  const credential = await signInWithEmailAndPassword(
+    harness.auth,
+    "pending.registration@example.invalid",
+    SYNTHETIC_PASSWORD
+  );
+  const token = await getIdTokenResult(credential.user, true);
+  assert.equal(token.claims.role, "trainer");
+  const approvedDb = harness.testEnv.authenticatedContext(pending.uid, token.claims).firestore();
+  const ownProfile = await getDoc(doc(approvedDb, "users", pending.uid));
+  assert.equal(ownProfile.data().uid, pending.uid);
+  await signOut(harness.auth);
+});
+
+test("fehlgeschlagene Freigabe entfernt Profil und Claims vollständig", async () => {
+  const pending = await adminSdk.auth.createUser({
+    email: "pending.rollback@example.invalid",
+    password: SYNTHETIC_PASSWORD,
+    emailVerified: false
+  });
+  const failingService = createServiceWithHooks({
+    beforeTokenRevoke: async ({ kind }) => {
+      if (kind === "approval") throw new Error("synthetic approval failure");
+    }
+  });
+
+  await assert.rejects(() => failingService.approvePendingUser(caller, {
+    uid: pending.uid,
+    username: "synthetic-rollback",
+    club: "Synthetic FC",
+    role: "spieler",
+    identityVerified: true,
+    emailAddressVerifiedExternally: true
+  }), /synthetic approval failure/);
+
+  assert.equal((await adminSdk.firestore.collection("users").doc(pending.uid).get()).exists, false);
+  const unchangedAuthUser = await adminSdk.auth.getUser(pending.uid);
+  assert.equal(unchangedAuthUser.emailVerified, false);
+  assert.deepEqual(unchangedAuthUser.customClaims || {}, {});
 });
 
 test("nicht berechtigter und nur clientseitig manipulierter Benutzer wird abgewiesen", async () => {

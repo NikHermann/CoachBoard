@@ -242,6 +242,12 @@ function createAdminProvisioningService({ auth, firestore, fieldValue, hooks = {
 
   async function approvePendingUser(caller, input) {
     await assertAdminCaller(caller);
+    if (input?.identityVerified !== true || input?.emailAddressVerifiedExternally !== true) {
+      throw new AdminProvisioningError(
+        "external-verification-required",
+        "Identität und angegebene E-Mail-Adresse müssen vor der Freigabe anderweitig geprüft sein."
+      );
+    }
     const uid = normalizeProfileId(input?.uid);
     const role = normalizeRole(input?.role || "spieler");
     const username = normalizeText(input?.username, "username", 80);
@@ -255,10 +261,10 @@ function createAdminProvisioningService({ auth, firestore, fieldValue, hooks = {
     await acquireLocks([profileLock], operationId);
     try {
       const userRecord = await auth.getUser(uid);
-      if (userRecord.disabled || !userRecord.email || !userRecord.emailVerified) {
+      if (userRecord.disabled || !userRecord.email) {
         throw new AdminProvisioningError(
-          "pending-email-not-verified",
-          "Das registrierte Konto muss zuerst seine E-Mail-Adresse bestätigen."
+          "pending-account-unavailable",
+          "Das registrierte Konto ist deaktiviert oder besitzt keine E-Mail-Adresse."
         );
       }
       previousClaims = userRecord.customClaims || {};
@@ -274,6 +280,7 @@ function createAdminProvisioningService({ auth, firestore, fieldValue, hooks = {
       await auth.setCustomUserClaims(uid, buildClaims(role, uid, profileId, previousClaims));
       await profileRef.create({ uid, email: userRecord.email, username, club, role });
       profileCreated = true;
+      await hooks.beforeTokenRevoke?.({ uid, profileId, kind: "approval" });
       await auth.revokeRefreshTokens(uid);
       return publicUserResult(await auth.getUser(uid), profileId, role, { username, club });
     } catch (error) {

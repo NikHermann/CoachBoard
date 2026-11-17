@@ -2940,8 +2940,8 @@ function bindEvents() {
         registerForm.reset();
         setAuthTab("login");
         loginUsername.value = email;
-        alert("Registrierung erfolgreich. Bitte bestätige deine E-Mail-Adresse. "
-          + "Die Anmeldung wird nach Freigabe durch die Vereinsadministration möglich.\n"
+        alert("Registrierung erfolgreich. Das Konto wartet jetzt auf die Freigabe durch die Vereinsadministration. "
+          + "Es wird keine Bestätigungs-E-Mail versendet.\n"
           + `Freigabecode: ${registration.uid}`);
       } catch (error) {
         const diagnostic = getSafeAuthDiagnostic(error, "registration");
