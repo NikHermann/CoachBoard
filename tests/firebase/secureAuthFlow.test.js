@@ -1,6 +1,7 @@
 import test, { after, before, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import {
+  createUserWithEmailAndPassword,
   getIdTokenResult,
   onAuthStateChanged,
   signInWithEmailAndPassword,
@@ -131,6 +132,54 @@ test("E-Mail-Login authentifiziert modern und lädt erst danach gezielt das eige
   assert.equal(authenticated.role, "spieler");
   assert.equal(Object.hasOwn(authenticated.profile, "password"), false);
   flow.dispose();
+});
+
+test("Registrierung erstellt ein claimloses Spielerprofil und öffnet sofort den geschützten Zugang", async () => {
+  const states = [];
+  const flow = createEmulatorFlow(states);
+  flow.start();
+  const email = "immediate.player@example.invalid";
+  const password = "Immediate!Player2026";
+
+  const registration = await flow.registerWithProfile(async () => {
+    const credential = await createUserWithEmailAndPassword(harness.auth, email, password);
+    const db = harness.testEnv.authenticatedContext(credential.user.uid, { email }).firestore();
+    await setDoc(doc(db, "users", credential.user.uid), {
+      uid: credential.user.uid,
+      email,
+      username: "immediate-player",
+      club: "TSV Ottensheim",
+      role: "spieler"
+    });
+    return { uid: credential.user.uid, user: credential.user, role: "spieler" };
+  });
+
+  const authenticated = await waitForState(states, (state) => state.status === "authenticated");
+  const token = await getIdTokenResult(registration.user);
+  assert.equal(Object.hasOwn(token.claims, "role"), false);
+  assert.equal(authenticated.role, "spieler");
+  assert.equal(authenticated.profile.uid, registration.uid);
+  assert.equal(authenticated.profile.username, "immediate-player");
+  flow.dispose();
+});
+
+test("Fehlgeschlagene Profilerstellung öffnet keinen geschützten Zugang", async () => {
+  const user = { uid: "partial-registration", email: "partial@example.invalid" };
+  const controlled = createControlledFlow({ user, profile: null });
+  controlled.flow.start();
+  controlled.emit(null);
+
+  await assert.rejects(() => controlled.flow.registerWithProfile(async () => {
+    controlled.emit(user);
+    throw Object.assign(new Error("temporärer Netzwerkfehler"), {
+      code: "firestore/unavailable"
+    });
+  }), { code: "firestore/unavailable" });
+
+  assert.equal(controlled.states.some((state) => state.status === "authenticated"), false);
+  assert.equal(controlled.flow.getState().status, "signed-out");
+  assert.equal(controlled.getLogoutCalls(), 1);
+  controlled.flow.dispose();
 });
 
 test("Ungültiges Passwort wird ausschließlich durch Firebase Auth abgewiesen", async () => {
@@ -334,7 +383,7 @@ test("Legacy-Profil ohne Auth-Konto kann sich nicht anmelden", async () => {
   flow.dispose();
 });
 
-test("Registriertes, aber noch nicht freigegebenes Auth-Konto bleibt ohne Profilzugriff", async () => {
+test("Auth-Konto ohne Spielerprofil bleibt ohne geschützten Zugriff", async () => {
   const states = [];
   const flow = createEmulatorFlow(states);
   flow.start();
@@ -352,7 +401,7 @@ test("Abweichende Legacy-Dokument-ID funktioniert nur mit serverseitiger profile
   withoutClaim.start();
   await withoutClaim.loginWithEmail(SYNTHETIC_ACCOUNTS.migrated.email, SYNTHETIC_ACCOUNTS.migrated.password);
   const errorState = await waitForState(withoutClaimStates, (state) => state.status === "error");
-  assert.equal(errorState.error.code, "profile-load-failed");
+  assert.equal(["profile-load-failed", "profile-missing"].includes(errorState.error.code), true);
   await waitForState(withoutClaimStates, (state) => state.status === "signed-out");
   withoutClaim.dispose();
 

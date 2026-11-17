@@ -187,6 +187,7 @@ export function createSecureAuthFlow(dependencies) {
   let startupInFlight = null;
   let resolveStartup = null;
   let manualLoginRequested = false;
+  let registrationInProgress = false;
   const startupReady = new Promise((resolve) => {
     resolveStartup = resolve;
   });
@@ -288,6 +289,8 @@ export function createSecureAuthFlow(dependencies) {
             return;
           }
 
+          if (registrationInProgress) return;
+
           const nextUid = String(user?.uid || "");
           const forceRefresh = Boolean(nextUid && nextUid !== observedUid);
           observedUid = nextUid || null;
@@ -348,9 +351,43 @@ export function createSecureAuthFlow(dependencies) {
       return this.loginWithEmail(normalizedIdentifier, password);
     },
 
+    async registerWithProfile(registerAccount) {
+      if (typeof registerAccount !== "function") {
+        throw new TypeError("Registrierungsfunktion fehlt.");
+      }
+
+      await startupReady;
+      manualLoginRequested = true;
+      registrationInProgress = true;
+      try {
+        const registration = await registerAccount();
+        const user = registration?.user;
+        if (!user?.uid) {
+          throw new SecureAuthError("registration-user-missing", "Das neue Auth-Konto ist nicht verfügbar.");
+        }
+
+        observedUid = user.uid;
+        await handleAuthState(user, true);
+        registrationInProgress = false;
+        if (state.status !== "authenticated") {
+          throw state.error || new SecureAuthError(
+            "registration-profile-load-failed",
+            "Das Spielerprofil konnte nach der Registrierung nicht geladen werden."
+          );
+        }
+        return registration;
+      } catch (error) {
+        registrationInProgress = false;
+        manualLoginRequested = false;
+        await logoutFromAuth().catch(() => {});
+        throw error;
+      }
+    },
+
     async logout() {
       ++generation;
       manualLoginRequested = false;
+      registrationInProgress = false;
       publish({ status: "signed-out", user: null, profile: null, role: null, error: null });
       await logoutFromAuth();
     },
@@ -399,6 +436,7 @@ export function createSecureAuthFlow(dependencies) {
       authStateInFlightUid = null;
       claimProfileIds.clear();
       manualLoginRequested = false;
+      registrationInProgress = false;
       resolveStartup?.();
       resolveStartup = null;
     }

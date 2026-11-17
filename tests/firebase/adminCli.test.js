@@ -128,7 +128,7 @@ test("sicherer Website-Modus besitzt keine administrative Callable-Anbindung", a
   assert.match(main, /if \(!isSecureAuthMode[\s\S]*?state\.activeView = "user-management"/);
 });
 
-test("Produktive Selbstregistrierung schreibt nur in Firebase Auth und zeigt den Freigabeprozess", async () => {
+test("Produktive Selbstregistrierung erstellt ausschließlich ein eigenes Spielerprofil", async () => {
   const [html, authService, main] = await Promise.all([
     readFile(new URL("../../Backend/index.html", import.meta.url), "utf8"),
     readFile(new URL("../../Backend/authService.js", import.meta.url), "utf8"),
@@ -137,14 +137,17 @@ test("Produktive Selbstregistrierung schreibt nur in Firebase Auth und zeigt den
   assert.match(html, /data-auth-tab="register">Registrieren</);
   assert.match(html, /name="password_confirmation"/);
   assert.match(html, /id="back-to-login-btn"/);
-  assert.match(authService, /registerPendingAccount[\s\S]*createUserWithEmailAndPassword/);
+  assert.match(authService, /registerPlayerAccount[\s\S]*createUserWithEmailAndPassword/);
   const registrationImplementation = authService.match(
-    /export async function registerPendingAccount[\s\S]*?\r?\n}\r?\n\r?\n\/\/ Logout/
+    /export async function registerPlayerAccount[\s\S]*?\r?\n}\r?\n\r?\n\/\/ Logout/
   )?.[0] || "";
   assert.notEqual(registrationImplementation, "");
   assert.doesNotMatch(registrationImplementation, /sendEmailVerification/);
-  assert.doesNotMatch(authService, /registerPendingAccount[\s\S]*setDoc\(/);
-  assert.match(main, /registerPendingAccount\(username, email, password\)/);
-  assert.doesNotMatch(main, /registerPendingAccount\([^)]*role/);
-  assert.match(main, /Es wird keine Bestätigungs-E-Mail versendet/);
+  assert.doesNotMatch(registrationImplementation, /deleteUser/);
+  assert.match(registrationImplementation, /role: "spieler"/);
+  assert.match(registrationImplementation, /setDoc\(profileRef/);
+  assert.match(main, /registerWithProfile/);
+  assert.match(main, /registerPlayerAccount\(username, email, password, "TSV Ottensheim"\)/);
+  assert.doesNotMatch(main, /registerPlayerAccount\([^)]*(trainer|admin)/);
+  assert.match(html, /Es wird keine Bestätigungs-E-Mail versendet/);
 });

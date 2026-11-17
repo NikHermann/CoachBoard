@@ -9,7 +9,7 @@ service cloud.firestore {
     }
 
     function hasRole(role) {
-      return signedIn() && request.auth.token.role == role;
+      return signedIn() && request.auth.token.get("role", "") == role;
     }
 
     function isAdmin() {
@@ -49,6 +49,26 @@ service cloud.firestore {
         && request.resource.data.club.size() <= 120;
     }
 
+    function isClaimlessSelfRegistration(userId) {
+      return signedIn()
+        && userId == request.auth.uid
+        && request.auth.token.email is string
+        && request.auth.token.get("role", "") == ""
+        && request.auth.token.get("profile_id", "") == "";
+    }
+
+    function validSelfRegisteredPlayer(userId) {
+      return isClaimlessSelfRegistration(userId)
+        && request.resource.data.keys().hasOnly([
+          "uid", "email", "username", "club", "role"
+        ])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.role == "spieler"
+        && hasNoStoredPassword(request.resource.data)
+        && validEditableProfileFields();
+    }
+
     function validOwnProfileUpdate(userId) {
       return ownsProfile(userId)
         && hasNoStoredPassword(resource.data)
@@ -64,15 +84,16 @@ service cloud.firestore {
 
     match /users/{userId} {
       // Legacy-Dokumente mit Passwortfeld bleiben auch für den Besitzer gesperrt.
-      allow get: if hasNoStoredPassword(resource.data) && ownsProfile(userId);
+      allow get: if (isClaimlessSelfRegistration(userId)
+          && !exists(/databases/$(database)/documents/users/$(userId)))
+        || (hasNoStoredPassword(resource.data) && ownsProfile(userId));
       // Collection-Queries können Felder nicht redigieren. Bis alle Legacy-
       // Passwortfelder entfernt sind, erfolgt Admin-Auflistung nur serverseitig.
       allow list: if false;
 
-      // Admin-Provisionierung und Rollenänderungen erfolgen nicht als direkter Client-Write.
-      // Alle aktiven Konten und Profile bestehen bereits. Neue Profile werden
-      // ausschließlich über einen gesondert freigegebenen Serverprozess angelegt.
-      allow create: if false;
+      // Nur das eigene, streng validierte Spielerprofil darf erstmalig
+      // clientseitig entstehen. Rollenänderungen bleiben serverseitig.
+      allow create: if validSelfRegisteredPlayer(userId);
       allow update: if validOwnProfileUpdate(userId);
       allow delete: if false;
     }

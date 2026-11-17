@@ -1,5 +1,5 @@
 import { initializeApp, deleteApp } from "firebase/app";
-import { auth, firebaseConfig, isLocalAuthTestMode } from "./firebase.js";
+import { auth, db, firebaseConfig, isLocalAuthTestMode } from "./firebase.js";
 import { LOCAL_AUTH_HOST, LOCAL_AUTH_PORT } from "./localAuthTestMode.js";
 import {
   signInWithEmailAndPassword,
@@ -7,7 +7,6 @@ import {
   updatePassword,
   createUserWithEmailAndPassword,
   connectAuthEmulator,
-  deleteUser,
   sendPasswordResetEmail,
   sendEmailVerification,
   EmailAuthProvider,
@@ -18,6 +17,7 @@ import {
   updateProfile,
   getAuth
 } from "firebase/auth";
+import { doc, getDoc, setDoc } from "firebase/firestore";
 
 // Beobachtet, ob sich der Login-Zustand ändert
 export function observeAuth(callback) {
@@ -88,31 +88,51 @@ export async function createAuthAccount(email, password) {
   }
 }
 
-// Selbstregistrierung erzeugt nur ein Firebase-Auth-Konto. Profil und Rollen-
-// Claims werden erst nach Freigabe durch den Spark-Admin-Prozess angelegt.
-export async function registerPendingAccount(username, email, password) {
-  const appName = `self-register-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  const secondaryApp = initializeApp(firebaseConfig, appName);
-  const secondaryAuth = getAuth(secondaryApp);
-  if (isLocalAuthTestMode) {
-    connectAuthEmulator(secondaryAuth, `http://${LOCAL_AUTH_HOST}:${LOCAL_AUTH_PORT}`, { disableWarnings: true });
-  }
-  let createdUser = null;
-
+// Selbstregistrierung erzeugt ein claimloses Auth-Konto und genau dessen
+// eigenes, streng begrenztes Spielerprofil.
+export async function registerPlayerAccount(username, email, password, club = "TSV Ottensheim") {
   try {
-    const credential = await createUserWithEmailAndPassword(secondaryAuth, email, password);
-    createdUser = credential.user;
-    await updateProfile(createdUser, { displayName: username });
-    await signOut(secondaryAuth);
-    return Object.freeze({ uid: createdUser.uid, pendingApproval: true });
-  } catch (error) {
-    if (createdUser) {
-      await deleteUser(createdUser).catch(() => {});
+    let credential;
+    try {
+      credential = await createUserWithEmailAndPassword(auth, email, password);
+    } catch (error) {
+      if (error?.code !== "auth/email-already-in-use") throw error;
+      credential = await signInWithEmailAndPassword(auth, email, password);
     }
+
+    const user = credential.user;
+    const authenticatedEmail = String(user.email || "").trim().toLowerCase();
+    if (!authenticatedEmail) {
+      throw Object.assign(new Error("Das Auth-Konto besitzt keine E-Mail-Adresse."), {
+        code: "auth/missing-email"
+      });
+    }
+
+    await updateProfile(user, { displayName: username });
+    const profileRef = doc(db, "users", user.uid);
+    const existing = await getDoc(profileRef);
+    if (existing.exists()) {
+      const profile = existing.data();
+      if (profile.uid !== user.uid
+          || String(profile.email || "").trim().toLowerCase() !== authenticatedEmail
+          || profile.role !== "spieler") {
+        throw Object.assign(new Error("Das vorhandene Profil ist nicht sicher zuordenbar."), {
+          code: "registration/profile-conflict"
+        });
+      }
+    } else {
+      await setDoc(profileRef, {
+        uid: user.uid,
+        email: authenticatedEmail,
+        username: String(username || "").trim(),
+        club: String(club || "").trim(),
+        role: "spieler"
+      });
+    }
+
+    return Object.freeze({ uid: user.uid, user, role: "spieler" });
+  } catch (error) {
     throw markFirebasePhase(error, "registration");
-  } finally {
-    await signOut(secondaryAuth).catch(() => {});
-    await deleteApp(secondaryApp).catch(() => {});
   }
 }
 

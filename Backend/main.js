@@ -12,7 +12,7 @@ import {
   getSafeProfileDiagnostic,
   getSessionErrorMessage
 } from "./secureAuthFlow.js";
-import { changeOwnPassword, registerPendingAccount, sendResetMailToEmail } from "./authService.js";
+import { changeOwnPassword, registerPlayerAccount, sendResetMailToEmail } from "./authService.js";
 import { isLocalAuthTestMode } from "./localAuthTestMode.js";
 import { isProductionAuthMode } from "./productionAuthMode.js";
 
@@ -2936,13 +2936,14 @@ function bindEvents() {
       const submitButton = registerForm.querySelector('[type="submit"]');
       if (submitButton) submitButton.disabled = true;
       try {
-        const registration = await registerPendingAccount(username, email, password);
+        await secureAuthFlow.registerWithProfile(
+          () => registerPlayerAccount(username, email, password, "TSV Ottensheim")
+        );
         registerForm.reset();
         setAuthTab("login");
-        loginUsername.value = email;
-        alert("Registrierung erfolgreich. Das Konto wartet jetzt auf die Freigabe durch die Vereinsadministration. "
-          + "Es wird keine Bestätigungs-E-Mail versendet.\n"
-          + `Freigabecode: ${registration.uid}`);
+        state.activeView = "library";
+        state.currentPage = 1;
+        updateBrowserUrl(true);
       } catch (error) {
         const diagnostic = getSafeAuthDiagnostic(error, "registration");
         console.warn("CoachBoard Registrierungsdiagnose:", diagnostic);

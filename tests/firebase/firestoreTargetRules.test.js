@@ -1,4 +1,5 @@
 import test, { after, before, beforeEach } from "node:test";
+import assert from "node:assert/strict";
 import { assertFails, assertSucceeds } from "@firebase/rules-unit-testing";
 import {
   collection,
@@ -66,8 +67,12 @@ test("Legacy-Dokument-ID wird über unverändertes UID-Feld zugeordnet", async (
 
 test("Legacy-Passwortprofil bleibt für Benutzer und Admin gesperrt", async () => {
   const legacyDb = harness.testEnv.authenticatedContext("legacy-profile-password", { role: "spieler" }).firestore();
+  const claimlessLegacyDb = harness.testEnv.authenticatedContext("legacy-profile-password", {
+    email: "legacy.password@example.invalid"
+  }).firestore();
   const adminDb = harness.testEnv.authenticatedContext("synthetic-admin", { role: "admin" }).firestore();
   await assertFails(getDoc(doc(legacyDb, "users", SYNTHETIC_DOCUMENT_IDS.legacyPassword)));
+  await assertFails(getDoc(doc(claimlessLegacyDb, "users", SYNTHETIC_DOCUMENT_IDS.legacyPassword)));
   await assertFails(getDoc(doc(adminDb, "users", SYNTHETIC_DOCUMENT_IDS.legacyPassword)));
   await assertFails(getDoc(doc(adminDb, "users", SYNTHETIC_DOCUMENT_IDS.legacyNoPassword)));
   await assertFails(getDocs(collection(adminDb, "users")));
@@ -113,35 +118,51 @@ test("Admin claim does not replace profile ownership or server-side user managem
   await assertFails(deleteDoc(doc(db, "users", seeded.modernUid)));
 });
 
-test("Neue Profile sind auch für authentifizierte Benutzer gesperrt", async () => {
+test("Claimloser neuer Benutzer erstellt ausschließlich sein eigenes Spielerprofil", async () => {
   const uid = "synthetic-new-player";
-  const db = harness.testEnv.authenticatedContext(uid, { role: "spieler" }).firestore();
-  await assertFails(setDoc(doc(db, "users", uid), {
+  const email = "new.player@example.invalid";
+  const db = harness.testEnv.authenticatedContext(uid, { email }).firestore();
+  const missingProfile = await assertSucceeds(getDoc(doc(db, "users", uid)));
+  assert.equal(missingProfile.exists(), false);
+  await assertSucceeds(setDoc(doc(db, "users", uid), {
     uid,
-    email: "new.player@example.invalid",
+    email,
     username: "synthetic-new-player",
     club: "Synthetic FC",
     role: "spieler"
   }));
   await assertFails(setDoc(doc(db, "users", "different-id"), {
     uid,
-    email: "new.player@example.invalid",
+    email,
     username: "synthetic-new-player",
     club: "Synthetic FC",
     role: "spieler"
   }));
-  await assertFails(setDoc(doc(db, "users", "synthetic-new-admin"), {
-    uid: "synthetic-new-admin",
-    email: "new.admin@example.invalid",
-    username: "synthetic-new-admin",
-    club: "Synthetic FC",
-    role: "admin"
-  }));
+  await assertSucceeds(getDoc(doc(db, "users", uid)));
+});
+
+test("Selbstregistrierung kann weder privilegierte Rollen noch geschützte Felder setzen", async () => {
+  const uid = "synthetic-registration-attack";
+  const email = "registration.attack@example.invalid";
+  const profile = { uid, email, username: "synthetic-attacker", club: "Synthetic FC", role: "spieler" };
+  const db = harness.testEnv.authenticatedContext(uid, { email }).firestore();
+  await assertFails(setDoc(doc(db, "users", uid), { ...profile, role: "admin" }));
+  await assertFails(setDoc(doc(db, "users", uid), { ...profile, role: "trainer" }));
+  await assertFails(setDoc(doc(db, "users", uid), { ...profile, uid: "foreign-uid" }));
+  await assertFails(setDoc(doc(db, "users", uid), { ...profile, email: "foreign@example.invalid" }));
+  await assertFails(setDoc(doc(db, "users", uid), { ...profile, admin: true }));
+  await assertFails(setDoc(doc(db, "users", uid), { ...profile, password: "never-allowed" }));
+  const trainerDb = harness.testEnv.authenticatedContext(uid, { email, role: "trainer" }).firestore();
+  const adminDb = harness.testEnv.authenticatedContext(uid, { email, role: "admin" }).firestore();
+  await assertFails(setDoc(doc(trainerDb, "users", uid), profile));
+  await assertFails(setDoc(doc(adminDb, "users", uid), profile));
 });
 
 test("Passwortfeld kann bei Profilerstellung nicht eingeführt werden", async () => {
   const uid = "synthetic-password-attempt";
-  const db = harness.testEnv.authenticatedContext(uid, { role: "spieler" }).firestore();
+  const db = harness.testEnv.authenticatedContext(uid, {
+    email: "password.attempt@example.invalid"
+  }).firestore();
   await assertFails(setDoc(doc(db, "users", uid), {
     uid,
     email: "password.attempt@example.invalid",
@@ -220,6 +241,22 @@ test("Spieler schreiben keine Trainings und Mustertrainings bleiben Admins vorbe
     created_by_auth_uid: seeded.modernUid,
     created_by_user_id: seeded.modernUid
   }));
+});
+
+test("Claimloser Standardspieler liest Trainings, besitzt aber keinerlei Trainings-Schreibrecht", async () => {
+  const uid = "claimless-player";
+  const db = harness.testEnv.authenticatedContext(uid, {
+    email: "claimless.player@example.invalid"
+  }).firestore();
+  await assertSucceeds(getDocs(collection(db, "trainings")));
+  await assertFails(setDoc(doc(db, "trainings", "claimless-create"), {
+    title: "Denied",
+    created_by_auth_uid: uid,
+    created_by_user_id: uid
+  }));
+  await assertFails(updateDoc(doc(db, "trainings", "modern-owned-training"), { title: "Denied" }));
+  await assertFails(deleteDoc(doc(db, "trainings", "modern-owned-training")));
+  await assertFails(setDoc(doc(db, "exercises", "claimless-exercise"), { title: "Denied" }));
 });
 
 test("Bestehendes Training bleibt über serverseitig zugeordnetes Legacy-Profil bearbeitbar", async () => {
