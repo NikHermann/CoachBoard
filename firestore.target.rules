@@ -49,6 +49,14 @@ service cloud.firestore {
         && request.resource.data.club.size() <= 120;
     }
 
+    function validOptionalAvatar(data) {
+      return !data.keys().hasAny(["avatarData"])
+        || (data.avatarData is string
+          && data.avatarData.size() > 0
+          && data.avatarData.size() <= 40983
+          && data.avatarData.matches('^data:image/(jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$'));
+    }
+
     function isClaimlessSelfRegistration(userId) {
       return signedIn()
         && userId == request.auth.uid
@@ -66,7 +74,8 @@ service cloud.firestore {
         && request.resource.data.email == request.auth.token.email
         && request.resource.data.role == "spieler"
         && hasNoStoredPassword(request.resource.data)
-        && validEditableProfileFields();
+        && validEditableProfileFields()
+        && validOptionalAvatar(request.resource.data);
     }
 
     function validOwnProfileUpdate(userId) {
@@ -74,11 +83,12 @@ service cloud.firestore {
         && hasNoStoredPassword(resource.data)
         && hasNoStoredPassword(request.resource.data)
         && validEditableProfileFields()
+        && validOptionalAvatar(request.resource.data)
         && request.resource.data.uid == resource.data.uid
         && request.resource.data.role == resource.data.role
         && request.resource.data.email == resource.data.email
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          "username", "club"
+          "username", "club", "avatarData"
         ]);
     }
 

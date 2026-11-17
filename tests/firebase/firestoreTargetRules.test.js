@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { assertFails, assertSucceeds } from "@firebase/rules-unit-testing";
 import {
   collection,
+  deleteField,
   deleteDoc,
   doc,
   getDoc,
@@ -109,6 +110,49 @@ test("Eigenes Profil erlaubt nur Benutzername und Verein", async () => {
   await assertFails(updateDoc(doc(db, "users", seeded.modernUid), { username: "" }));
   await assertFails(updateDoc(doc(db, "users", seeded.modernUid), { username: 42 }));
   await assertFails(updateDoc(doc(db, "users", seeded.modernUid), { club: "x".repeat(121) }));
+});
+
+test("Eigenes kompaktes Raster-Profilbild kann gespeichert, geändert und entfernt werden", async () => {
+  const db = harness.testEnv.authenticatedContext(seeded.modernUid, { role: "spieler" }).firestore();
+  const jpegAvatar = `data:image/jpeg;base64,${Buffer.alloc(1024, 1).toString("base64")}`;
+  const webpAvatar = `data:image/webp;base64,${Buffer.alloc(2048, 2).toString("base64")}`;
+  await assertSucceeds(updateDoc(doc(db, "users", seeded.modernUid), { avatarData: jpegAvatar }));
+  assert.equal((await getDoc(doc(db, "users", seeded.modernUid))).data().avatarData, jpegAvatar);
+  await assertSucceeds(updateDoc(doc(db, "users", seeded.modernUid), { avatarData: webpAvatar }));
+  await assertSucceeds(updateDoc(doc(db, "users", seeded.modernUid), { avatarData: deleteField() }));
+  assert.equal(Object.hasOwn((await getDoc(doc(db, "users", seeded.modernUid))).data(), "avatarData"), false);
+});
+
+test("Avatarregeln sperren falsche Formate, externe Inhalte und übergroße Daten", async () => {
+  const db = harness.testEnv.authenticatedContext(seeded.modernUid, { role: "trainer" }).firestore();
+  const tooLarge = `data:image/jpeg;base64,${Buffer.alloc(30 * 1024 + 1, 3).toString("base64")}`;
+  await assertFails(updateDoc(doc(db, "users", seeded.modernUid), { avatarData: "https://example.invalid/avatar.jpg" }));
+  await assertFails(updateDoc(doc(db, "users", seeded.modernUid), { avatarData: "data:image/svg+xml;base64,PHN2Zz4=" }));
+  await assertFails(updateDoc(doc(db, "users", seeded.modernUid), { avatarData: "data:text/html;base64,PGgxPk5laW48L2gxPg==" }));
+  await assertFails(updateDoc(doc(db, "users", seeded.modernUid), { avatarData: tooLarge }));
+  await assertFails(updateDoc(doc(db, "users", seeded.modernUid), { avatarData: 42 }));
+});
+
+test("Alle Rollen dürfen nur das Avatarfeld ihres eigenen Profils ändern", async () => {
+  const avatar = "data:image/webp;base64,AQIDBA==";
+  await harness.testEnv.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), "users", "synthetic-admin"), {
+      uid: "synthetic-admin",
+      email: "admin@example.invalid",
+      username: "synthetic-admin",
+      club: "Synthetic FC",
+      role: "admin"
+    });
+  });
+  const trainerDb = harness.testEnv.authenticatedContext(seeded.migratedUid, {
+    role: "trainer",
+    profile_id: SYNTHETIC_DOCUMENT_IDS.migrated
+  }).firestore();
+  const adminDb = harness.testEnv.authenticatedContext("synthetic-admin", { role: "admin" }).firestore();
+  await assertSucceeds(updateDoc(doc(trainerDb, "users", SYNTHETIC_DOCUMENT_IDS.migrated), { avatarData: avatar }));
+  await assertSucceeds(updateDoc(doc(adminDb, "users", "synthetic-admin"), { avatarData: avatar }));
+  await assertFails(updateDoc(doc(trainerDb, "users", seeded.modernUid), { avatarData: avatar }));
+  await assertFails(updateDoc(doc(adminDb, "users", seeded.modernUid), { avatarData: avatar }));
 });
 
 test("Admin claim does not replace profile ownership or server-side user management", async () => {

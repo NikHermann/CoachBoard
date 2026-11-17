@@ -798,6 +798,33 @@
             </div>
           </div>
 
+          <div class="profile-picture-section" aria-labelledby="profile-picture-title">
+            <div
+                    id="profile-picture-preview"
+                    class="profile-picture-preview profile-chip__avatar--spieler"
+                    aria-hidden="true"
+            >?</div>
+            <div class="profile-picture-content">
+              <h4 id="profile-picture-title" class="account-action-card__title">Profilbild</h4>
+              <p>JPEG, PNG oder WebP. Das Bild wird auf 128 × 128 Pixel zugeschnitten und auf maximal 30 KB komprimiert.</p>
+              <input
+                      id="profile-picture-input"
+                      class="visually-hidden"
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"
+              />
+              <div class="profile-picture-actions">
+                <button id="profile-picture-select-btn" class="btn btn--primary" type="button">
+                  Profilbild auswählen
+                </button>
+                <button id="profile-picture-remove-btn" class="btn btn--secondary is-hidden" type="button">
+                  Entfernen
+                </button>
+              </div>
+              <p id="profile-picture-status" class="profile-picture-status" role="status" aria-live="polite"></p>
+            </div>
+          </div>
+
           <div class="account-actions-grid">
             <div class="account-action-card">
               <h4 class="account-action-card__title">Benutzername ändern</h4>

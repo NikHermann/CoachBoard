@@ -11,6 +11,7 @@ import {
 import { createAuthAccount } from "./authService.js";
 import { isLocalAuthTestMode } from "./localAuthTestMode.js";
 import { isProductionAuthMode } from "./productionAuthMode.js";
+import { isValidAvatarData } from "./avatarUtils.js";
 
 const isSecureAuthMode = isLocalAuthTestMode || isProductionAuthMode;
 
@@ -80,7 +81,8 @@ function normalizeUser(userDoc) {
     username: data.username || data.name || userDoc.id,
     club: data.club || "TSV Ottensheim",
     role: normalizeRole(data.role),
-    password: typeof data.password === "string" ? data.password : ""
+    password: typeof data.password === "string" ? data.password : "",
+    avatarData: typeof data.avatarData === "string" ? data.avatarData : ""
   };
 }
 
@@ -237,6 +239,7 @@ export async function updateUserProfile(userId, updates, reloadUsers) {
       ? String(updates.club || "").trim()
       : undefined;
   const role = updates?.role ? normalizeRole(updates.role) : undefined;
+  const avatarData = updates?.avatarData;
 
   if (username !== undefined) {
     const usernameError = getUsernameValidationError(username);
@@ -248,6 +251,11 @@ export async function updateUserProfile(userId, updates, reloadUsers) {
 
   if (club !== undefined && !club) {
     alert("Der Verein darf nicht leer sein.");
+    return null;
+  }
+
+  if (avatarData !== undefined && avatarData !== null && !isValidAvatarData(avatarData)) {
+    alert("Das Profilbild ist ungültig oder größer als 30 KB.");
     return null;
   }
 
@@ -263,6 +271,10 @@ export async function updateUserProfile(userId, updates, reloadUsers) {
 
   if (role !== undefined) {
     updatePayload.role = role;
+  }
+
+  if (avatarData !== undefined) {
+    updatePayload.avatarData = avatarData === null ? deleteField() : avatarData;
   }
 
   if (Object.keys(updatePayload).length === 0) {

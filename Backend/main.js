@@ -15,6 +15,7 @@ import {
 import { changeOwnPassword, registerPlayerAccount, sendResetMailToEmail } from "./authService.js";
 import { isLocalAuthTestMode } from "./localAuthTestMode.js";
 import { isProductionAuthMode } from "./productionAuthMode.js";
+import { isValidAvatarData, prepareAvatarData } from "./avatarUtils.js";
 
 const isSecureAuthMode = isLocalAuthTestMode || isProductionAuthMode;
 
@@ -318,6 +319,11 @@ const topbarRole = document.getElementById("topbar-role");
 const profileUsernameDisplay = document.getElementById("profile-username-display");
 const profileRoleDisplay = document.getElementById("profile-role-display");
 const profileClubDisplay = document.getElementById("profile-club-display");
+const profilePicturePreview = document.getElementById("profile-picture-preview");
+const profilePictureInput = document.getElementById("profile-picture-input");
+const profilePictureSelectBtn = document.getElementById("profile-picture-select-btn");
+const profilePictureRemoveBtn = document.getElementById("profile-picture-remove-btn");
+const profilePictureStatus = document.getElementById("profile-picture-status");
 const openUsernameEditBtn = document.getElementById("open-username-edit-btn");
 const openPasswordEditBtn = document.getElementById("open-password-edit-btn");
 const usernameEditForm = document.getElementById("username-edit-form");
@@ -502,8 +508,23 @@ function normalizeUser(user) {
     username: user.username || user.name || "Unbekannt",
     club: user.club || "TSV Ottensheim",
     role: normalizeRole(user.role),
-    password: typeof user.password === "string" ? user.password : ""
+    password: typeof user.password === "string" ? user.password : "",
+    avatarData: isValidAvatarData(user.avatarData) ? user.avatarData : ""
   };
+}
+
+function renderAvatar(element, user) {
+  if (!element) return;
+  const avatarData = isValidAvatarData(user?.avatarData) ? user.avatarData : "";
+  element.textContent = avatarData ? "" : getInitials(user?.username);
+  element.style.backgroundImage = avatarData ? `url("${avatarData}")` : "";
+  element.className = `${element.id === "profile-avatar" ? "profile-chip__avatar" : "profile-picture-preview"} ${getRoleAvatarClass(user?.role)}`;
+}
+
+function setProfilePictureStatus(message = "", type = "") {
+  if (!profilePictureStatus) return;
+  profilePictureStatus.textContent = message;
+  profilePictureStatus.className = `profile-picture-status${type ? ` is-${type}` : ""}`;
 }
 
 function getAgeGroups() {
@@ -627,8 +648,8 @@ function updateCurrentUserUI() {
   const user = state.currentUser;
 
   if (!user) {
-    profileAvatar.textContent = "?";
-    profileAvatar.className = "profile-chip__avatar profile-chip__avatar--spieler";
+    renderAvatar(profileAvatar, null);
+    renderAvatar(profilePicturePreview, null);
     topbarUsername.textContent = "Nicht angemeldet";
     topbarRole.textContent = "—";
     profileUsernameDisplay.textContent = "—";
@@ -645,11 +666,16 @@ function updateCurrentUserUI() {
     userManagementCreateForm?.classList.add("is-hidden");
     templateOptionField?.classList.add("is-hidden");
     createTrainingBtn?.classList.add("is-hidden");
+    profilePictureRemoveBtn?.classList.add("is-hidden");
+    if (profilePictureSelectBtn) profilePictureSelectBtn.textContent = "Profilbild auswählen";
+    setProfilePictureStatus();
     return;
   }
 
-  profileAvatar.textContent = getInitials(user.username);
-  profileAvatar.className = `profile-chip__avatar ${getRoleAvatarClass(user.role)}`;
+  renderAvatar(profileAvatar, user);
+  renderAvatar(profilePicturePreview, user);
+  profilePictureRemoveBtn?.classList.toggle("is-hidden", !user.avatarData);
+  if (profilePictureSelectBtn) profilePictureSelectBtn.textContent = user.avatarData ? "Ändern" : "Profilbild auswählen";
   topbarUsername.textContent = user.username;
   topbarRole.textContent = getRoleLabel(user.role);
   profileUsernameDisplay.textContent = user.username;
@@ -3343,6 +3369,57 @@ function bindEvents() {
 
   openUsernameEditBtn.addEventListener("click", openUsernameEditView);
   openPasswordEditBtn.addEventListener("click", openPasswordEditView);
+
+  profilePictureSelectBtn?.addEventListener("click", () => profilePictureInput?.click());
+
+  profilePictureInput?.addEventListener("change", async () => {
+    const file = profilePictureInput.files?.[0];
+    profilePictureInput.value = "";
+    if (!file || !state.currentUser) return;
+
+    const previousAvatar = state.currentUser.avatarData;
+    profilePictureSelectBtn.disabled = true;
+    profilePictureRemoveBtn.disabled = true;
+    setProfilePictureStatus("Bild wird verarbeitet …");
+    try {
+      const avatarData = await prepareAvatarData(file);
+      if (!await requireValidSecureSession()) throw new Error("Die Sitzung ist nicht mehr gültig. Bitte erneut anmelden.");
+      const result = await updateUserProfile(state.currentUser.id, { avatarData });
+      if (!result) throw new Error("Das Profilbild konnte nicht gespeichert werden.");
+      state.currentUser = normalizeUser({ ...state.currentUser, avatarData });
+      state.users = state.users.map((user) => user.id === state.currentUser.id ? state.currentUser : user);
+      updateCurrentUserUI();
+      setProfilePictureStatus("Profilbild wurde gespeichert.", "success");
+    } catch (error) {
+      state.currentUser.avatarData = previousAvatar;
+      updateCurrentUserUI();
+      setProfilePictureStatus(error?.message || "Das Profilbild konnte nicht verarbeitet werden.", "error");
+    } finally {
+      profilePictureSelectBtn.disabled = false;
+      profilePictureRemoveBtn.disabled = false;
+    }
+  });
+
+  profilePictureRemoveBtn?.addEventListener("click", async () => {
+    if (!state.currentUser?.avatarData) return;
+    profilePictureSelectBtn.disabled = true;
+    profilePictureRemoveBtn.disabled = true;
+    setProfilePictureStatus("Profilbild wird entfernt …");
+    try {
+      if (!await requireValidSecureSession()) throw new Error("Die Sitzung ist nicht mehr gültig. Bitte erneut anmelden.");
+      const result = await updateUserProfile(state.currentUser.id, { avatarData: null });
+      if (!result) throw new Error("Das Profilbild konnte nicht entfernt werden.");
+      state.currentUser = normalizeUser({ ...state.currentUser, avatarData: "" });
+      state.users = state.users.map((user) => user.id === state.currentUser.id ? state.currentUser : user);
+      updateCurrentUserUI();
+      setProfilePictureStatus("Profilbild wurde entfernt.", "success");
+    } catch (error) {
+      setProfilePictureStatus(error?.message || "Das Profilbild konnte nicht entfernt werden.", "error");
+    } finally {
+      profilePictureSelectBtn.disabled = false;
+      profilePictureRemoveBtn.disabled = false;
+    }
+  });
 
   backToProfileFromUsernameBtn.addEventListener("click", () => {
     state.activeView = "profile";

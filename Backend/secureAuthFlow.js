@@ -149,7 +149,8 @@ function sanitizeProfile(profile, user, profileId) {
     uid: user.uid,
     email: typeof profile.email === "string" ? profile.email : user.email || "",
     username: typeof profile.username === "string" ? profile.username : "",
-    club: typeof profile.club === "string" ? profile.club : ""
+    club: typeof profile.club === "string" ? profile.club : "",
+    avatarData: typeof profile.avatarData === "string" ? profile.avatarData : ""
   });
 }
 
