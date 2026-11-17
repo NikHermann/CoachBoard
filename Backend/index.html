@@ -16,7 +16,7 @@
 
     <div class="auth-tabs">
       <button class="auth-tab is-active" type="button" data-auth-tab="login">Anmelden</button>
-      <button id="register-tab" class="auth-tab" type="button" data-auth-tab="register">Konto erstellen</button>
+      <button id="register-tab" class="auth-tab" type="button" data-auth-tab="register">Registrieren</button>
     </div>
 
     <div id="auth-login-panel">
@@ -73,18 +73,6 @@
         </label>
 
         <label class="field">
-          <span class="field__label">Verein</span>
-          <input
-                  class="field__control"
-                  type="text"
-                  name="club"
-                  value="TSV Ottensheim"
-                  placeholder="Vereinsname"
-                  required
-          />
-        </label>
-
-        <label class="field">
           <span class="field__label">E-Mail</span>
           <input
                   class="field__control"
@@ -108,12 +96,29 @@
           />
         </label>
 
+        <label class="field">
+          <span class="field__label">Passwort bestätigen</span>
+          <input
+                  class="field__control"
+                  type="password"
+                  name="password_confirmation"
+                  placeholder="Passwort erneut eingeben"
+                  autocomplete="new-password"
+                  required
+          />
+        </label>
+
         <p class="auth-note">
-          Neue Accounts werden automatisch als <strong>Trainer</strong> angelegt.
+          Nach der E-Mail-Bestätigung wird das Konto durch die Vereinsadministration freigegeben.
+          Rollen werden ausschließlich durch Administratoren vergeben.
         </p>
 
         <button class="btn btn--primary btn--full btn--large" type="submit">
-          Konto erstellen
+          Registrieren
+        </button>
+
+        <button id="back-to-login-btn" class="btn btn--secondary btn--full" type="button">
+          Zurück zur Anmeldung
         </button>
       </form>
     </div>

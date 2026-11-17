@@ -77,6 +77,7 @@ function createControlledFlow({
   const flow = createSecureAuthFlow({
     loginWithEmailPassword: async () => {
       if (loginError) throw loginError;
+      queueMicrotask(() => observer?.(user));
       return { user };
     },
     observeAuthState: (callback) => {
@@ -207,7 +208,7 @@ test("Sichtbare Profildiagnose beschränkt sich auf freigegebene Kategorien", ()
   });
 });
 
-test("Browser-Neuladen wird durch einen neuen Observer auf derselben Auth-Sitzung wiederhergestellt", async () => {
+test("Browser-Neuladen verwirft die gespeicherte Sitzung und verlangt manuellen Login", async () => {
   const firstStates = [];
   const firstFlow = createEmulatorFlow(firstStates);
   firstFlow.start();
@@ -218,8 +219,10 @@ test("Browser-Neuladen wird durch einen neuen Observer auf derselben Auth-Sitzun
   const reloadStates = [];
   const reloadedFlow = createEmulatorFlow(reloadStates);
   reloadedFlow.start();
-  const restored = await waitForState(reloadStates, (state) => state.status === "authenticated");
-  assert.equal(restored.user.uid, seeded.modernUid);
+  const signedOut = await waitForState(reloadStates, (state) => state.status === "signed-out");
+  assert.equal(signedOut.user, null);
+  assert.equal(reloadStates.some((state) => state.status === "loading-profile"), false);
+  assert.equal(reloadStates.some((state) => state.status === "authenticated"), false);
   reloadedFlow.dispose();
 });
 
@@ -232,7 +235,10 @@ test("Token-Refresh-Callback derselben UID überschreibt den profile_id-Abruf ni
   let tokenReads = 0;
 
   const flow = createSecureAuthFlow({
-    loginWithEmailPassword: async () => ({ user }),
+    loginWithEmailPassword: async () => {
+      queueMicrotask(() => observer?.(user));
+      return { user };
+    },
     observeAuthState: (callback) => {
       observer = callback;
       return () => { observer = null; };
@@ -255,7 +261,8 @@ test("Token-Refresh-Callback derselben UID überschreibt den profile_id-Abruf ni
   });
 
   flow.start();
-  observer(user);
+  observer(null);
+  await flow.loginWithEmail(user.email, "synthetic-password");
   const authenticated = await waitForState(states, (state) => state.status === "authenticated");
   assert.equal(authenticated.profile.id, profileId);
   assert.deepEqual(requestedProfileIds, [profileId]);
@@ -271,7 +278,10 @@ test("Späterer Callback ohne Claim ersetzt eine verifizierte Profilzuordnung ni
   let observer;
   let tokenRead = 0;
   const flow = createSecureAuthFlow({
-    loginWithEmailPassword: async () => ({ user }),
+    loginWithEmailPassword: async () => {
+      queueMicrotask(() => observer?.(user));
+      return { user };
+    },
     observeAuthState: (callback) => {
       observer = callback;
       return () => { observer = null; };
@@ -286,7 +296,8 @@ test("Späterer Callback ohne Claim ersetzt eine verifizierte Profilzuordnung ni
   });
 
   flow.start();
-  observer(user);
+  observer(null);
+  await flow.loginWithEmail("sticky@example.invalid", "synthetic-password");
   await waitForState(states, (state) => state.status === "authenticated");
   observer(user);
   await waitForState(states, (_, index) => index > 2 && states.at(-1)?.status === "authenticated");
@@ -320,6 +331,18 @@ test("Legacy-Profil ohne Auth-Konto kann sich nicht anmelden", async () => {
     ),
     /auth\/(invalid-credential|user-not-found)/
   );
+  flow.dispose();
+});
+
+test("Registriertes, aber noch nicht freigegebenes Auth-Konto bleibt ohne Profilzugriff", async () => {
+  const states = [];
+  const flow = createEmulatorFlow(states);
+  flow.start();
+  await flow.loginWithEmail(SYNTHETIC_ACCOUNTS.orphanAuth.email, SYNTHETIC_ACCOUNTS.orphanAuth.password);
+  const errorState = await waitForState(states, (state) => state.status === "error");
+  assert.equal(["profile-load-failed", "profile-missing"].includes(errorState.error.code), true);
+  await waitForState(states, (state) => state.status === "signed-out");
+  assert.equal(states.some((state) => state.status === "authenticated"), false);
   flow.dispose();
 });
 
@@ -380,7 +403,8 @@ test("Serverseitige Trainer- und Admin-Claims bestimmen die Rolle, nicht das Pro
       }
     });
     controlled.flow.start();
-    controlled.emit(user);
+    controlled.emit(null);
+    await controlled.flow.loginWithEmail(user.email, "synthetic-password");
     await waitForState(controlled.states, (state) => state.status === "authenticated");
     assert.equal(controlled.flow.getState().role, role);
     assert.equal(controlled.flow.getState().profile.role, undefined);
@@ -397,7 +421,8 @@ test("Fehlender oder falscher Rollen-Claim wird auf minimale Spielerrolle reduzi
       profile: { uid: user.uid, email: user.email, username: "synthetic-claim", role: "admin" }
     });
     controlled.flow.start();
-    controlled.emit(user);
+    controlled.emit(null);
+    await controlled.flow.loginWithEmail(user.email, "synthetic-password");
     await waitForState(controlled.states, (state) => state.status === "authenticated");
     assert.equal(controlled.flow.getState().role, "spieler");
     controlled.flow.dispose();
@@ -420,7 +445,8 @@ test("Passwortprofil und UID-Konflikt führen fail-closed zum Logout", async () 
     const user = { uid: "secure-user", email: "secure@example.invalid" };
     const controlled = createControlledFlow({ user, profile: currentCase.profile });
     controlled.flow.start();
-    controlled.emit(user);
+    controlled.emit(null);
+    await controlled.flow.loginWithEmail(user.email, "synthetic-password");
     const errorState = await waitForState(controlled.states, (state) => state.status === "error");
     assert.equal(errorState.error.code, currentCase.code);
     assert.equal(controlled.getLogoutCalls(), 1);
@@ -432,10 +458,13 @@ test("Gesperrtes Konto wird ohne Profilzugriff abgewiesen", async () => {
   const disabledError = Object.assign(new Error("Account disabled"), { code: "auth/user-disabled" });
   const user = { uid: "disabled-user", email: "disabled@example.invalid" };
   const controlled = createControlledFlow({ user, profile: null, loginError: disabledError });
+  controlled.flow.start();
+  controlled.emit(null);
   await assert.rejects(() => controlled.flow.loginWithEmail(user.email, "synthetic-password"), {
     code: "auth/user-disabled"
   });
-  assert.equal(controlled.states.length, 0);
+  assert.equal(controlled.states.some((state) => state.status === "authenticated"), false);
+  assert.equal(controlled.states.some((state) => state.status === "loading-profile"), false);
   controlled.flow.dispose();
 });
 
@@ -446,7 +475,8 @@ test("Abgelaufene oder entzogene Sitzung wird durch Auth-Observer beendet", asyn
     profile: { uid: user.uid, email: user.email, username: "synthetic-session" }
   });
   controlled.flow.start();
-  controlled.emit(user);
+  controlled.emit(null);
+  await controlled.flow.loginWithEmail(user.email, "synthetic-password");
   await waitForState(controlled.states, (state) => state.status === "authenticated");
   controlled.emit(null);
   await waitForState(controlled.states, (state) => state.status === "signed-out");
@@ -465,7 +495,8 @@ test("Widerrufene Sitzung wird bei der nächsten erzwungenen Prüfung sicher abg
   });
 
   controlled.flow.start();
-  controlled.emit(user);
+  controlled.emit(null);
+  await controlled.flow.loginWithEmail(user.email, "synthetic-password");
   await waitForState(controlled.states, (state) => state.status === "authenticated");
   await assert.rejects(() => controlled.flow.validateSession(), { code: "session-invalid" });
   assert.equal(controlled.getLogoutCalls(), 1);

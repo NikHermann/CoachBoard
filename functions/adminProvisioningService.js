@@ -240,6 +240,53 @@ function createAdminProvisioningService({ auth, firestore, fieldValue, hooks = {
     }
   }
 
+  async function approvePendingUser(caller, input) {
+    await assertAdminCaller(caller);
+    const uid = normalizeProfileId(input?.uid);
+    const role = normalizeRole(input?.role || "spieler");
+    const username = normalizeText(input?.username, "username", 80);
+    const club = normalizeText(input?.club, "club", 120);
+    const operationId = randomUUID();
+    const profileId = uid;
+    const profileLock = lockId("profile", profileId);
+    let profileCreated = false;
+    let previousClaims = {};
+
+    await acquireLocks([profileLock], operationId);
+    try {
+      const userRecord = await auth.getUser(uid);
+      if (userRecord.disabled || !userRecord.email || !userRecord.emailVerified) {
+        throw new AdminProvisioningError(
+          "pending-email-not-verified",
+          "Das registrierte Konto muss zuerst seine E-Mail-Adresse bestätigen."
+        );
+      }
+      previousClaims = userRecord.customClaims || {};
+      if (previousClaims.role || previousClaims.profile_id) {
+        throw new AdminProvisioningError("account-already-provisioned", "Das Konto ist bereits freigegeben.");
+      }
+
+      const profileRef = firestore.collection("users").doc(profileId);
+      if ((await profileRef.get()).exists) {
+        throw new AdminProvisioningError("profile-already-exists", "Profildokument ist bereits belegt.");
+      }
+
+      await auth.setCustomUserClaims(uid, buildClaims(role, uid, profileId, previousClaims));
+      await profileRef.create({ uid, email: userRecord.email, username, club, role });
+      profileCreated = true;
+      await auth.revokeRefreshTokens(uid);
+      return publicUserResult(await auth.getUser(uid), profileId, role, { username, club });
+    } catch (error) {
+      if (profileCreated) {
+        await firestore.collection("users").doc(profileId).delete().catch(() => {});
+      }
+      await auth.setCustomUserClaims(uid, previousClaims).catch(() => {});
+      throw error;
+    } finally {
+      await releaseLocks([profileLock], operationId).catch(() => {});
+    }
+  }
+
   async function linkLegacyProfile(caller, input) {
     await assertAdminCaller(caller);
     if (input?.identityVerified !== true || input?.emailVerified !== true) {
@@ -478,6 +525,7 @@ function createAdminProvisioningService({ auth, firestore, fieldValue, hooks = {
   return Object.freeze({
     listUsers,
     createUser,
+    approvePendingUser,
     linkLegacyProfile,
     linkExistingUser,
     updateUser,

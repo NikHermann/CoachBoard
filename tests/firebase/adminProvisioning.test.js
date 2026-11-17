@@ -111,6 +111,38 @@ test("berechtigter Administrator erstellt deaktiviert-gesichert ein vollständig
   assert.equal(Object.hasOwn(profile.data(), "password"), false);
 });
 
+test("Selbstregistrierung bleibt bis zur verifizierten Spark-Admin-Freigabe ohne Profil und Claims", async () => {
+  const pending = await adminSdk.auth.createUser({
+    email: "pending.registration@example.invalid",
+    password: SYNTHETIC_PASSWORD,
+    displayName: "synthetic-pending",
+    emailVerified: false
+  });
+
+  assert.deepEqual((await adminSdk.auth.getUser(pending.uid)).customClaims || {}, {});
+  assert.equal((await adminSdk.firestore.collection("users").doc(pending.uid).get()).exists, false);
+  await assert.rejects(() => service.approvePendingUser(caller, {
+    uid: pending.uid,
+    username: "synthetic-pending",
+    club: "Synthetic FC",
+    role: "trainer"
+  }), { code: "pending-email-not-verified" });
+
+  await adminSdk.auth.updateUser(pending.uid, { emailVerified: true });
+  const approved = await service.approvePendingUser(caller, {
+    uid: pending.uid,
+    username: "synthetic-pending",
+    club: "Synthetic FC",
+    role: "trainer"
+  });
+
+  assert.equal(approved.role, "trainer");
+  assert.deepEqual((await adminSdk.auth.getUser(pending.uid)).customClaims, { role: "trainer" });
+  const profile = await adminSdk.firestore.collection("users").doc(pending.uid).get();
+  assert.equal(profile.data().uid, pending.uid);
+  assert.equal(Object.hasOwn(profile.data(), "password"), false);
+});
+
 test("nicht berechtigter und nur clientseitig manipulierter Benutzer wird abgewiesen", async () => {
   const uid = await createPasswordAccount("ordinary.user@example.invalid", "spieler");
   await adminSdk.firestore.collection("users").doc(uid).update({ role: "admin" });

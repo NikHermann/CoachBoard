@@ -32,6 +32,10 @@ export function getLoginErrorMessage(error) {
       return "Firebase Authentication ist derzeit nicht erreichbar. Bitte die Netzwerkverbindung prüfen.";
     case "auth/operation-not-allowed":
       return "Die E-Mail-/Passwort-Anmeldung ist für dieses Firebase-Projekt nicht aktiviert.";
+    case "auth/email-already-in-use":
+      return "Für diese E-Mail-Adresse besteht bereits ein Konto.";
+    case "auth/weak-password":
+      return "Das Passwort erfüllt die Firebase-Sicherheitsanforderungen nicht.";
     default:
       return "Die Anmeldung ist wegen eines unerwarteten Firebase-Fehlers fehlgeschlagen.";
   }
@@ -180,6 +184,12 @@ export function createSecureAuthFlow(dependencies) {
   let observedUid = null;
   let authStateInFlight = null;
   let authStateInFlightUid = null;
+  let startupInFlight = null;
+  let resolveStartup = null;
+  let manualLoginRequested = false;
+  const startupReady = new Promise((resolve) => {
+    resolveStartup = resolve;
+  });
   const claimProfileIds = new Map();
   let state = Object.freeze({ status: "idle", user: null, profile: null, role: null, error: null });
 
@@ -257,6 +267,27 @@ export function createSecureAuthFlow(dependencies) {
 
       if (!unsubscribe) {
         unsubscribe = observeAuthState((user) => {
+          // Persistierte Firebase-Sitzungen werden beim Seitenstart verworfen,
+          // ohne Claims, Profile oder geschÃ¼tzte Daten zu laden.
+          if (!startupInFlight) {
+            startupInFlight = (async () => {
+              ++generation;
+              manualLoginRequested = false;
+              if (user) await logoutFromAuth().catch(() => {});
+              publish({ status: "signed-out", user: null, profile: null, role: null, error: null });
+              resolveStartup?.();
+              resolveStartup = null;
+            })();
+            return;
+          }
+
+          if (!manualLoginRequested) {
+            ++generation;
+            if (user) void logoutFromAuth().catch(() => {});
+            publish({ status: "signed-out", user: null, profile: null, role: null, error: null });
+            return;
+          }
+
           const nextUid = String(user?.uid || "");
           const forceRefresh = Boolean(nextUid && nextUid !== observedUid);
           observedUid = nextUid || null;
@@ -293,7 +324,15 @@ export function createSecureAuthFlow(dependencies) {
         throw new SecureAuthError("missing-password", "Bitte ein Passwort eingeben.");
       }
 
-      return loginWithEmailPassword(normalizedEmail, password);
+      await startupReady;
+      manualLoginRequested = true;
+      try {
+        return await loginWithEmailPassword(normalizedEmail, password);
+      } catch (error) {
+        manualLoginRequested = false;
+        await logoutFromAuth().catch(() => {});
+        throw error;
+      }
     },
 
     async loginWithIdentifier(identifier, password) {
@@ -311,6 +350,8 @@ export function createSecureAuthFlow(dependencies) {
 
     async logout() {
       ++generation;
+      manualLoginRequested = false;
+      publish({ status: "signed-out", user: null, profile: null, role: null, error: null });
       await logoutFromAuth();
     },
 
@@ -357,6 +398,9 @@ export function createSecureAuthFlow(dependencies) {
       authStateInFlight = null;
       authStateInFlightUid = null;
       claimProfileIds.clear();
+      manualLoginRequested = false;
+      resolveStartup?.();
+      resolveStartup = null;
     }
   });
 }

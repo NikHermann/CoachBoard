@@ -1,10 +1,13 @@
 import { initializeApp, deleteApp } from "firebase/app";
-import { auth, firebaseConfig } from "./firebase.js";
+import { auth, firebaseConfig, isLocalAuthTestMode } from "./firebase.js";
+import { LOCAL_AUTH_HOST, LOCAL_AUTH_PORT } from "./localAuthTestMode.js";
 import {
   signInWithEmailAndPassword,
   signOut,
   updatePassword,
   createUserWithEmailAndPassword,
+  connectAuthEmulator,
+  deleteUser,
   sendPasswordResetEmail,
   sendEmailVerification,
   EmailAuthProvider,
@@ -12,6 +15,7 @@ import {
   onIdTokenChanged,
   getIdTokenResult,
   reload,
+  updateProfile,
   getAuth
 } from "firebase/auth";
 
@@ -71,10 +75,42 @@ export async function createAuthAccount(email, password) {
   const appName = `user-create-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const secondaryApp = initializeApp(firebaseConfig, appName);
   const secondaryAuth = getAuth(secondaryApp);
+  if (isLocalAuthTestMode) {
+    connectAuthEmulator(secondaryAuth, `http://${LOCAL_AUTH_HOST}:${LOCAL_AUTH_PORT}`, { disableWarnings: true });
+  }
 
   try {
     const credential = await createUserWithEmailAndPassword(secondaryAuth, email, password);
     return credential.user.uid;
+  } finally {
+    await signOut(secondaryAuth).catch(() => {});
+    await deleteApp(secondaryApp).catch(() => {});
+  }
+}
+
+// Selbstregistrierung erzeugt nur ein Firebase-Auth-Konto. Profil und Rollen-
+// Claims werden erst nach Freigabe durch den Spark-Admin-Prozess angelegt.
+export async function registerPendingAccount(username, email, password) {
+  const appName = `self-register-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const secondaryApp = initializeApp(firebaseConfig, appName);
+  const secondaryAuth = getAuth(secondaryApp);
+  if (isLocalAuthTestMode) {
+    connectAuthEmulator(secondaryAuth, `http://${LOCAL_AUTH_HOST}:${LOCAL_AUTH_PORT}`, { disableWarnings: true });
+  }
+  let createdUser = null;
+
+  try {
+    const credential = await createUserWithEmailAndPassword(secondaryAuth, email, password);
+    createdUser = credential.user;
+    await updateProfile(createdUser, { displayName: username });
+    await sendEmailVerification(createdUser);
+    await signOut(secondaryAuth);
+    return Object.freeze({ uid: createdUser.uid, pendingApproval: true });
+  } catch (error) {
+    if (createdUser) {
+      await deleteUser(createdUser).catch(() => {});
+    }
+    throw markFirebasePhase(error, "registration");
   } finally {
     await signOut(secondaryAuth).catch(() => {});
     await deleteApp(secondaryApp).catch(() => {});

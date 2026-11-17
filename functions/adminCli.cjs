@@ -12,7 +12,7 @@ const PRODUCTION_PROJECT_ID = "coachboarddb";
 const EMULATOR_PROJECT_ID = "demo-coachboard-auth";
 const AUTH_EMULATOR_HOST = "127.0.0.1:9099";
 const FIRESTORE_EMULATOR_HOST = "127.0.0.1:8080";
-const COMMANDS = new Set(["list", "create", "update", "role", "disable", "enable", "delete", "link"]);
+const COMMANDS = new Set(["list", "create", "approve", "update", "role", "disable", "enable", "delete", "link"]);
 
 function parseArguments(argv) {
   const options = {};
@@ -93,6 +93,17 @@ async function collectInput(command, prompt) {
     };
   }
   const uid = (await prompt.question("Ziel-UID: ")).trim();
+  if (command === "approve") {
+    return {
+      target: uid,
+      input: {
+        uid,
+        username: (await prompt.question("Benutzername: ")).trim(),
+        club: (await prompt.question("Verein: ")).trim(),
+        role: (await prompt.question("Rolle (spieler/trainer/admin): ")).trim()
+      }
+    };
+  }
   if (command === "update") {
     return {
       target: uid,
@@ -120,6 +131,7 @@ async function collectInput(command, prompt) {
 async function execute(service, caller, command, input) {
   if (command === "list") return service.listUsers(caller);
   if (command === "create") return service.createUser(caller, input);
+  if (command === "approve") return service.approvePendingUser(caller, input);
   if (command === "update") return service.updateUser(caller, input);
   if (command === "role") return service.setRole(caller, input.uid, input.role);
   if (command === "disable") return service.disableUser(caller, input.uid);
@@ -132,7 +144,7 @@ async function execute(service, caller, command, input) {
 async function main() {
   const { command, options } = parseArguments(process.argv.slice(2));
   if (!COMMANDS.has(command) || !options.mode || !options.project || !options["admin-uid"]) {
-    throw new Error("Aufruf: adminCli.cjs <list|create|update|role|disable|enable|delete|link> --mode <emulator|production> --project <id> --admin-uid <uid> [--confirm-project coachboarddb] [--operator-email <adc-email>]");
+    throw new Error("Aufruf: adminCli.cjs <list|create|approve|update|role|disable|enable|delete|link> --mode <emulator|production> --project <id> --admin-uid <uid> [--confirm-project coachboarddb] [--operator-email <adc-email>]");
   }
   assertRuntimeIsolation({ mode: options.mode, project: options.project, confirmProject: options["confirm-project"] });
 

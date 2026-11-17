@@ -12,7 +12,7 @@ import {
   getSafeProfileDiagnostic,
   getSessionErrorMessage
 } from "./secureAuthFlow.js";
-import { changeOwnPassword, sendResetMailToEmail } from "./authService.js";
+import { changeOwnPassword, registerPendingAccount, sendResetMailToEmail } from "./authService.js";
 import { isLocalAuthTestMode } from "./localAuthTestMode.js";
 import { isProductionAuthMode } from "./productionAuthMode.js";
 
@@ -22,6 +22,7 @@ const STORAGE_KEY = "coachboardCurrentUserId";
 let initialDataLoadPromise = null;
 let loginInProgress = false;
 let passwordResetInProgress = false;
+let registrationInProgress = false;
 let secureAuthFlow = null;
 let secureSessionCheckInProgress = null;
 
@@ -227,6 +228,7 @@ const loginPassword = document.getElementById("login-password");
 const loginIdentifierLabel = document.getElementById("login-identifier-label");
 const loginAuthNote = document.getElementById("login-auth-note");
 const registerTab = document.getElementById("register-tab");
+const backToLoginBtn = document.getElementById("back-to-login-btn");
 const passwordResetBtn = document.getElementById("password-reset-btn");
 
 const pageTitle = document.getElementById("page-title");
@@ -2647,8 +2649,7 @@ async function handleSecureAuthState(authState) {
 }
 
 function activateSecureAuthMode() {
-  registerTab?.classList.add("is-hidden");
-  authRegisterPanel?.classList.add("is-hidden");
+  registerTab?.classList.remove("is-hidden");
   passwordResetBtn?.classList.remove("is-hidden");
   loginIdentifierLabel.textContent = "E-Mail-Adresse";
   loginUsername.type = "email";
@@ -2807,6 +2808,10 @@ function bindEvents() {
     });
   });
 
+  backToLoginBtn?.addEventListener("click", () => {
+    setAuthTab("login");
+  });
+
   loginForm.addEventListener("submit", async (event) => {
     event.preventDefault();
 
@@ -2900,7 +2905,52 @@ function bindEvents() {
     event.preventDefault();
 
     if (isSecureAuthMode) {
-      alert("Die Registrierung ist im sicheren Firebase-Auth-Modus deaktiviert.");
+      if (registrationInProgress) return;
+
+      const formData = new FormData(registerForm);
+      const username = String(formData.get("username") || "").trim();
+      const email = String(formData.get("email") || "").trim().toLowerCase();
+      const password = String(formData.get("password") || "");
+      const confirmation = String(formData.get("password_confirmation") || "");
+
+      const usernameError = getUsernameValidationError(username);
+      if (usernameError) {
+        alert(usernameError);
+        return;
+      }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        alert("Bitte eine gültige E-Mail-Adresse eingeben.");
+        return;
+      }
+      const passwordError = getPasswordValidationError(password);
+      if (passwordError) {
+        alert(passwordError);
+        return;
+      }
+      if (password !== confirmation) {
+        alert("Die Passwörter stimmen nicht überein.");
+        return;
+      }
+
+      registrationInProgress = true;
+      const submitButton = registerForm.querySelector('[type="submit"]');
+      if (submitButton) submitButton.disabled = true;
+      try {
+        const registration = await registerPendingAccount(username, email, password);
+        registerForm.reset();
+        setAuthTab("login");
+        loginUsername.value = email;
+        alert("Registrierung erfolgreich. Bitte bestätige deine E-Mail-Adresse. "
+          + "Die Anmeldung wird nach Freigabe durch die Vereinsadministration möglich.\n"
+          + `Freigabecode: ${registration.uid}`);
+      } catch (error) {
+        const diagnostic = getSafeAuthDiagnostic(error, "registration");
+        console.warn("CoachBoard Registrierungsdiagnose:", diagnostic);
+        alert(`${getLoginErrorMessage(error)}\nDiagnose: ${diagnostic.phase}: ${diagnostic.code}`);
+      } finally {
+        registrationInProgress = false;
+        if (submitButton) submitButton.disabled = false;
+      }
       return;
     }
 
@@ -3622,8 +3672,13 @@ function bindEvents() {
     closeMobileMenu();
     resetTrainingCreateForm();
     if (isSecureAuthMode) {
-      await secureAuthFlow.logout();
-      clearAuthenticatedData();
+      try {
+        await secureAuthFlow.logout();
+      } catch (error) {
+        console.warn("CoachBoard Logout-Diagnose:", getSafeAuthDiagnostic(error, "sign-out"));
+      } finally {
+        clearAuthenticatedData();
+      }
     } else {
       setCurrentUser(null);
     }
