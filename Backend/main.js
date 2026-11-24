@@ -121,8 +121,7 @@ function applyBrowserRoute() {
   }
 
   if (path === "/benutzer") {
-    if (!isSecureAuthMode
-        && state.currentUser
+    if (state.currentUser
         && normalizeRole(state.currentUser.role) === "admin") {
       state.activeView = "user-management";
     } else {
@@ -691,7 +690,7 @@ function updateCurrentUserUI() {
   const canCreateTraining = isAdmin || normalizeRole(user.role) === "trainer";
   adminUserSection?.classList.toggle("is-hidden", !isAdmin || isSecureAuthMode);
   devRoleSection?.classList.toggle("is-hidden", !isAdmin || isSecureAuthMode);
-  userManagementNav?.classList.toggle("is-hidden", !isAdmin || isSecureAuthMode);
+  userManagementNav?.classList.toggle("is-hidden", !isAdmin);
   userManagementCreateForm?.classList.toggle("is-hidden", !isAdmin || isSecureAuthMode);
   templateOptionField?.classList.toggle("is-hidden", !isAdmin);
   createTrainingBtn?.classList.toggle("is-hidden", !canCreateTraining);
@@ -700,7 +699,7 @@ function updateCurrentUserUI() {
     trainingCreateForm.elements.is_template.checked = false;
   }
 
-  if ((!isAdmin || isSecureAuthMode) && state.activeView === "user-management") {
+  if (!isAdmin && state.activeView === "user-management") {
     state.activeView = "library";
   }
 }
@@ -3354,9 +3353,8 @@ function bindEvents() {
       const targetView = link.dataset.view;
 
       if (targetView === "user-management"
-          && (isSecureAuthMode
-            || !state.currentUser
-            || normalizeRole(state.currentUser.role) !== "admin")) {
+          && (!state.currentUser
+              || normalizeRole(state.currentUser.role) !== "admin")) {
         alert("Nur Admins dürfen die Benutzerverwaltung öffnen.");
         return;
       }

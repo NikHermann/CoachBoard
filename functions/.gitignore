@@ -1,2 +1,9 @@
 node_modules/
 *.local
+
+# Lokale Firebase-Admin-Werkzeuge
+functions/checkAdminClaim.cjs
+functions/restoreAdminClaim.cjs
+
+# Geheimer Gemini-API-Schlüssel
+functions/.secret.local
